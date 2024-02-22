@@ -4,6 +4,7 @@ R1  110 ohm 0805
 R2  1K 0805
 C1  1uF 0805
 Q3  N-channel SOT-23 (ex. SSM3K333RLF)
+LED1 T1-3/4 IR LED (had some laying around)
 
 Bottom:
 R4   3.09K 0805
