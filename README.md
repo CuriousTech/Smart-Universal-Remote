@@ -11,7 +11,7 @@ Parts list:
 
 [ESP32-2424S012](https://www.aliexpress.us/item/3256805375174366.html?spm=a2g0o.order_list.order_list_main.5.1a5a1802KTy5Kg&gatewayAdapt=glo2usa) Get the one with touch and case, which also adds a small antenna. Just push it out and be careful with the antenna which is stuck to the back of the case.  
 
-[eBay:Charger pad](https://www.ebay.com/itm/143351559508?var=442544081497) Select USB-C. These can be bought anywhere.  
+[eBay:Charger pad](https://www.ebay.com/itm/143351559508?var=442544081497) Select USB-C. These can be bought anywhere.  As shown, place it face down, which flips the connector so the "wire" thing is on top. The edges of the pad can be bent because the wrapper is a bit oversized.  
 
 [eBay:battery](https://www.ebay.com/itm/174781170731?var=473957762104) Select 1.25mm plug. This is probably a decent size. I ordered it a month ago, haven't received it yet. Be careful with the polarity. All cells that I already have were reversed from what this needs. Swap the pins if so.  
 
