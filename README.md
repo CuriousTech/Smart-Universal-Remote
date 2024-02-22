@@ -15,7 +15,7 @@ Parts list:
 
 [eBay:battery](https://www.ebay.com/itm/174781170731?var=473957762104) Select 1.25mm plug. This is probably a decent size. I ordered it a month ago, haven't received it yet. Be careful with the polarity. All cells that I already have were reversed from what this needs. Swap the pins if so.  
 
-SH1.0mm connector. Look on ebay or other sites.  
+SH1.0mm 4P connector. Look on ebay or other sites.  
 
 [Documents and examples](http://pan.jczn1688.com/directlink/1/ESP32%20module/1.28inch_ESP32-2424S012.zip)  
 
