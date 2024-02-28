@@ -6,7 +6,6 @@ Display and UI code
 #include "display.h"
 #include <TimeLib.h>
 #include "eeMem.h"
-#include "screensavers.h"
 #include <TFT_eSPI.h> // TFT_espi library from library manager?
 #include "CST816D.h"
 #include "Lights.h"
@@ -16,6 +15,8 @@ TFT_eSprite sprite = TFT_eSprite(&tft);
 extern Lights lights;
 extern void sendIR(uint16_t *pCode);
 extern bool sendBLE(uint16_t *pCode);
+
+extern bool sendPCMediaCmd( uint16_t *pCode);
 
 #define I2C_SDA 4
 #define I2C_SCL 5
@@ -27,7 +28,10 @@ extern bool sendBLE(uint16_t *pCode);
 
 CST816D touch(I2C_SDA, I2C_SCL, TP_RST, TP_INT);
 
+#include "screensavers.h" // comment this line to remove screensavers (saves 3172b PROGMEM, 1072b SRAM)
+#ifdef SCREENSAVERS_H
 ScreenSavers ss;
+#endif
 
 #define TITLE_HEIGHT 40
 #define BORDER_SPACE 3 // H and V spacing + font size for buttons and space between buttons
@@ -54,6 +58,18 @@ void Display::init(void)
   sprite.pushSprite(0, 0); // draw screen 0 on start
 }
 
+void Display::exitScreensaver()
+{
+  m_backlightTimer = DISPLAY_TIMEOUT; // reset timer for any touch
+
+  if( m_brightness == ee.brightLevel[0] ) // screensaver active
+  {
+    drawScreen(m_currScreen, true); // draw over screensaver
+    sprite.pushSprite(0, 0);
+  }
+  m_brightness = ee.brightLevel[1]; // increase brightness for any touch
+}
+
 void Display::service(void)
 {
   static Button *pCurrBtn; // for button repeats and release
@@ -70,9 +86,10 @@ void Display::service(void)
     m_nDispFreeze = 0;
   }
 
+#ifdef SCREENSAVERS_H
   if(m_brightness == ee.brightLevel[0]) // full dim activates screensaver
     ss.run();
-
+#endif
   uint8_t gesture;
   static bool bScrolling; // scrolling active
   uint16_t touchX, touchY;
@@ -99,12 +116,7 @@ void Display::service(void)
 
     if( m_brightness < ee.brightLevel[1] ) // ignore input until brightness is full
     {
-      if( m_brightness == ee.brightLevel[0] ) // screensaver active
-      {
-        drawScreen(m_currScreen, true); // draw over screensaver
-        sprite.pushSprite(0, 0);
-      }
-      m_brightness = ee.brightLevel[1]; // increase brightness for any touch
+      exitScreensaver();
       return;
     }
 
@@ -254,7 +266,7 @@ void Display::service(void)
 
   }
 
-  if(year() < 2024) // || WiFi.status() != WL_CONNECTED) // Do a connecting effect
+  if(year() < 2024 || WiFi.status() != WL_CONNECTED) // Do a connecting effect
   {
     static int16_t ang[2] = {3, 20};
     tft.drawSmoothArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 119, 116, ang[0], ang[1], TFT_BLUE, TFT_BLACK, false);
@@ -262,7 +274,7 @@ void Display::service(void)
     ang[1] += 32;
     ang[0] %= 360;
     ang[1] %= 360;
-    tft.drawSmoothArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 119, 116, ang[0], ang[1], TFT_RED, TFT_BLACK, false);
+    tft.drawSmoothArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 119, 116, ang[0], ang[1], (WiFi.status() == WL_CONNECTED) ? TFT_GREEN:TFT_RED, TFT_BLACK, false);
   }
 }
 
@@ -278,7 +290,9 @@ void Display::oneSec()
     {
       m_brightness = ee.brightLevel[0]; // dim level
       m_blSurgeTimer = 0;
+#ifdef SCREENSAVERS_H
       ss.select( random(0, SS_Count) );
+#endif
     }
   }
 
@@ -568,6 +582,11 @@ void Display::buttonCmd(Button *pBtn, bool bRepeat)
         notify("BLE command failed");
       break;
 
+    case BTF_PC_Media:
+      if( !sendPCMediaCmd(pBtn->code) )
+        notify("PC command failed");
+      break;
+
     case BTF_Clear:
       memset(m_pszNotifs, 0, sizeof(m_pszNotifs) );
       break;
@@ -576,16 +595,27 @@ void Display::buttonCmd(Button *pBtn, bool bRepeat)
 
 void Display::sliderCmd(uint8_t nType, uint8_t nOldVal, uint8_t nNewVal)
 {
+
+  uint16_t code[4];
+
   switch( nType)
   {
     case SL_Lights:
       lights.setSwitch( -1, true, nNewVal);
+      break;
+    case SL_PC:
+      code[0] = 1000;
+      code[1] = nNewVal;
+      sendPCMediaCmd(code);
       break;
   }
 }
 
 void Display::notify(char *pszNote)
 {
+  if( m_brightness < ee.brightLevel[1] ) // make it bright if not
+    exitScreensaver();
+
   tft.setFreeFont(&FreeSans9pt7b);
 
   uint8_t w = tft.textWidth(pszNote) + (BORDER_SPACE*2);
@@ -726,6 +756,16 @@ void Display::drawClock()
   const float x = DISPLAY_WIDTH/2; // center
   const float y = DISPLAY_HEIGHT/2;
 
+  sprite.drawSmoothCircle(x, y, x-2, TFT_WHITE, TFT_BLACK);
+
+  for(uint16_t i = 0; i < 360; i += 6) // drawing the watchface instead of an image saves 9% of PROGMEM
+  {
+    uint16_t xH,yH,xH2,yH2;
+    cspoint(xH, yH, x, y, i, 114); // outer edge
+    cspoint(xH2, yH2, x, y, i, (i%30) ? 103:94); // 60 ticks/12 longer ticks
+    sprite.drawWideLine(xH, yH, xH2, yH2, (i%30) ? 2:3, TFT_WHITE, TFT_BLACK); // 12 wider ticks
+  }
+
   if(year() < 2024)
     return;
 
@@ -734,7 +774,7 @@ void Display::drawClock()
   float a = (hour() + (minute() * 0.00833) ) * 30;
   cspoint(xH, yH, x, y, a, 64);
   cspoint(xM, yM, x, y, minute() * 6, 87);
-  cspoint(xS, yS, x, y, second() * 6, 91);
+  cspoint(xS, yS, x, y, second() * 6, 94);
   cspoint(xS2, yS2, x, y, (second()+30) * 6, 24);
 
   sprite.drawWedgeLine(x, y, xH, yH, 8, 2, TFT_LIGHTGREY, TFT_BLACK); // hour hand
@@ -747,5 +787,34 @@ void Display::cspoint(uint16_t &x2, uint16_t &y2, uint16_t x, uint16_t y, float 
 {
   float ang =  M_PI * (180-angle) / 180;
   x2 = x + size * sin(ang);
-  y2 = y + size * cos(ang);  
+  y2 = y + size * cos(ang);
+}
+
+void Display::setPcVolume(int8_t iValue)
+{
+  uint8_t i;
+  for(i = 0; i < m_scrnCnt; i++)
+    if(m_screen[i].nSliderType == SL_PC)
+      break;
+  m_screen[i].nSliderValue = iValue;
+}
+
+void Display::RingIndicator(uint8_t n)
+{
+  uint16_t ang = 130;
+
+  switch(n)
+  {
+    case 0: // IR TX
+      ang = 160;
+      break;
+    case 1: // IR RX
+      ang = 190;
+      break;
+    case 2: // PC TX
+      ang = 148;
+      break;
+  }
+
+  tft.drawSmoothArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 119, 115, ang, ang+8, TFT_RED, TFT_BLACK, true);
 }
