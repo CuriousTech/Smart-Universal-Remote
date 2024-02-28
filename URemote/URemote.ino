@@ -47,11 +47,10 @@ AsyncWebServer server( 80 );
 AsyncWebSocket ws("/ws"); // access at ws://[esp ip]/ws
 uint8_t nWsConnected;
 int WsClientID;
+int WsPcClientID;
 void jsonCallback(int16_t iName, int iValue, char *psValue);
 JsonParse jsonParse(jsonCallback);
 #endif
-
-#include "Lights.h"
 
 #ifdef BLE_ENABLE
 #include <BleKeyboard.h> // https://github.com/T-vK/ESP32-BLE-Keyboard
@@ -60,77 +59,80 @@ BleKeyboard bleKeyboard;
 
 #define IR_RECEIVE_PIN   20 // RXD0
 #define IR_SEND_PIN      21 // TXD0
-#define TONE_PIN         10 // ADC2_0
-#define APPLICATION_PIN  11
-#define DISABLE_CODE_FOR_RECEIVER // Disables restarting receiver after each send. Saves 450 bytes program memory and 269 bytes RAM if receiving functions are not used.
-//#define EXCLUDE_EXOTIC_PROTOCOLS  // Saves around 240 bytes program memory if IrSender.write is used
+//#define DISABLE_CODE_FOR_RECEIVER // Disables restarting receiver after each send. Saves 450 bytes program memory and 269 bytes RAM if receiving functions are not used.
+#define EXCLUDE_EXOTIC_PROTOCOLS  // Saves around 240 bytes program memory if IrSender.write is used
 //#define SEND_PWM_BY_TIMER         // Disable carrier PWM generation in software and use (restricted) hardware PWM.
 //#define USE_NO_SEND_PWM           // Use no carrier PWM, just simulate an active low receiver signal. Overrides SEND_PWM_BY_TIMER definition
 #define NO_LED_FEEDBACK_CODE      // Saves 566 bytes program memory
+
+#if !defined(RAW_BUFFER_LENGTH)
+#  if RAMEND <= 0x4FF || RAMSIZE < 0x4FF
+#define RAW_BUFFER_LENGTH  180  // 750 (600 if we have only 2k RAM) is the value for air condition remotes. Default is 112 if DECODE_MAGIQUEST is enabled, otherwise 100.
+#  elif RAMEND <= 0x8FF || RAMSIZE < 0x8FF
+#define RAW_BUFFER_LENGTH  600  // 750 (600 if we have only 2k RAM) is the value for air condition remotes. Default is 112 if DECODE_MAGIQUEST is enabled, otherwise 100.
+#  else
+#define RAW_BUFFER_LENGTH  750  // 750 (600 if we have only 2k RAM) is the value for air condition remotes. Default is 112 if DECODE_MAGIQUEST is enabled, otherwise 100.
+#  endif
+#endif
+#define MARK_EXCESS_MICROS    20    // Adapt it to your IR receiver module. 20 is recommended for the cheap VS1838 modules.
+
 #include <IRremote.hpp> // IRremote from library manager
 
 #include "display.h"
-
+#include "Lights.h" // Uses ~3KB
 Lights lights;
 const char *hostName = "URemote"; // Device and OTA name
 
 bool bConfigDone = false; // EspTouch done or creds set
 bool bStarted = false;
 uint32_t connectTimer;
+bool bRXActive;
 
 Display display;
 eeMem ee;
 UdpTime uTime;
 
-uint8_t protoList[]= // conversion from webpage list
+void consolePrint(String s)
 {
-    SAMSUNG,
-    SAMSUNG_LG,
-    SAMSUNG48,
-    DENON,
-    JVC,
-    LG,
-    LG2,
-    PANASONIC,
-    SHARP,
-    SONY,
-    APPLE,
-    NEC,
-    NEC2, /* NEC with full frame as repeat */
-    ONKYO,
+  jsonString js("print");
+  js.Var("text", s);
+  ws.textAll(js.Close());  
+}
 
-    PULSE_WIDTH,
-    PULSE_DISTANCE,
-    KASEIKYO,
-    KASEIKYO_DENON,
-    KASEIKYO_SHARP,
-    KASEIKYO_JVC,
-    KASEIKYO_MITSUBISHI,
-    RC5,
-    RC6,
-};
+#if defined(SERVER_ENABLE) && !defined(DISABLE_CODE_FOR_RECEIVER)
+void decodePrint(uint8_t proto, uint16_t addr, uint16_t cmd, uint32_t raw, uint8_t bits, uint8_t flags)
+{
+  jsonString js("decode");
+  js.Var("proto", proto);
+  js.Var("addr", addr);
+  js.Var("code", cmd);
+  js.Var("raw", raw);
+  js.Var("bits", bits);
+//  js.Var("flags", flags);
+  ws.textAll(js.Close());  
+}
+#endif
 
 void sendIR(uint16_t *pCode)
 {
+  display.RingIndicator(0);
   IRData IRSendData;
   IRSendData.protocol = (decode_type_t)pCode[0];
   IRSendData.address = pCode[1]; // Address
   IRSendData.command = pCode[2]; // Command
   IRSendData.flags = IRDATA_FLAGS_EMPTY;
 
-  IrSender.write(&IRSendData, pCode[3]);
+  IrSender.write(&IRSendData, pCode[3]); // 3=repeats
 //    delay(DELAY_AFTER_SEND);
 
-  String s = "Sent ";
-  s += pCode[0];
-  s += " ";
-  s += pCode[1];
-  s += " ";
-  s += pCode[2];
-
-  jsonString js("print");
-  js.Var("text", s);
-  ws.textAll(js.Close());
+#ifdef SERVER_ENABLE
+  jsonString js("send");
+  js.Var("proto", pCode[0]);
+  js.Var("addr", pCode[1]);
+  js.Var("code", pCode[2]);
+  js.Var("rep", pCode[3]);
+  ws.textAll(js.Close());  
+#endif
 }
 
 //-----------------
@@ -180,6 +182,12 @@ void startWiFi()
   ArduinoOTA.begin();
   ArduinoOTA.onStart([]() {
     ee.update();
+#ifdef SERVER_ENABLE
+  jsonString js("print");
+  js.Var("text", "OTA update started");
+  ws.textAll(js.Close());
+#endif
+  delay(100);
   });
 #endif
 }
@@ -246,12 +254,51 @@ bool sendBLE(uint16_t *pCode)
 #endif
 }
 
+/* HOTKEY
+  case 0: // play/pause
+  case 1: // stop
+  case 2: // next
+  case 3: // back
+  case 4: // Mute
+  case 5: // Volume up
+  case 5: // Volume down
+*/
+
+bool sendPCMediaCmd( uint16_t *pCode)
+{
+#ifdef SERVER_ENABLE
+  if(WsPcClientID == 0)
+    return false;
+
+  display.RingIndicator(2);
+  if(pCode[0] == 1000)
+  {
+    jsonString js("volume");
+    js.Var("value", pCode[1]);
+    ws.text(WsPcClientID, js.Close());
+  }
+  else
+  {
+    jsonString js("media");
+    js.Var("HOTKEY", pCode[0]);
+    ws.text(WsPcClientID, js.Close());
+  }
+  return true;
+#else
+  return false;
+#endif
+}
+
 #ifdef SERVER_ENABLE
 
 const char *jsonListCmd[] = {
-  "PROTO",
+  "PROTO", // IR send commands
   "ADDR",
   "CODE",
+  "REP",
+  "RX",
+  "PC_REMOTE", // PC commands client
+  "VOLUME",
   NULL
 };
 
@@ -262,14 +309,31 @@ void jsonCallback(int16_t iName, int iValue, char *psValue)
   switch (iName)
   {
     case 0: // PROTO
-      code[0] = protoList[iValue];
+      code[0] = iValue;
       break;
     case 1: // ADDR
       code[1] = iValue;
       break;
     case 2: // CODE
       code[2] = iValue;
+      break;
+    case 3: // REP
+      code[3] = iValue;
       sendIR(code);
+      break;
+    case 4: // RX
+#ifndef DISABLE_CODE_FOR_RECEIVER
+      IrReceiver.begin(IR_RECEIVE_PIN);
+      consolePrint("Decode started");
+      bRXActive = true;
+#endif
+      break;
+    case 5: // PC_REMOTE
+      WsPcClientID = WsClientID;
+      display.notify("PC Connected");
+      break;
+    case 6: // VOLUME
+      display.setPcVolume(iValue);
       break;
   }
 }
@@ -279,6 +343,15 @@ String dataJson()
   jsonString js("state");
   js.Var("t", (long)now() - ( (ee.tz + uTime.getDST() ) * 3600) );
   return js.Close();
+}
+
+uint8_t ssCnt = 58;
+
+void sendState()
+{
+  if (nWsConnected)
+    ws.textAll( dataJson() );
+  ssCnt = 58;
 }
 
 String setupJson()
@@ -303,6 +376,8 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
       if (nWsConnected)
         nWsConnected--;
       WsClientID = 0;
+      if(client->id() == WsPcClientID)
+        WsPcClientID = 0;
       break;
     case WS_EVT_ERROR:    //error was received from the other end
       break;
@@ -324,7 +399,7 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
 
 void setup()
 {
-  ets_printf("Starting\n"); // print over USB
+//  ets_printf("Starting\n"); // print over USB
   display.init();
   startWiFi();
   if(ee.bBtEnabled == false)
@@ -364,7 +439,7 @@ void loop()
   static uint8_t hour_save, min_save = 255, sec_save;
   static int8_t lastSec;
   static int8_t lastHour;
-
+  
   display.service();  // check for touch, etc.
 
   if(uTime.check(ee.tz))
@@ -372,7 +447,36 @@ void loop()
   }
 
   serviceWiFi(); // handles OTA
-  
+
+#ifndef DISABLE_CODE_FOR_RECEIVER
+  if(bRXActive)
+  {
+     if (IrReceiver.decode())
+     {
+        if (IrReceiver.decodedIRData.flags & IRDATA_FLAGS_WAS_OVERFLOW)
+        {
+//          consolePrint("Try to increase the \"RAW_BUFFER_LENGTH\" value" );
+        }
+        else
+        {
+            if (IrReceiver.decodedIRData.protocol == UNKNOWN)
+            {
+              consolePrint(F("Received noise or an unknown (or not yet enabled) protocol. Stopped"));
+              IrReceiver.stop();
+              bRXActive = 0;
+            }
+            else
+            {
+              display.RingIndicator(1);
+              decodePrint( IrReceiver.decodedIRData.protocol, IrReceiver.decodedIRData.address, IrReceiver.decodedIRData.command,
+                IrReceiver.decodedIRData.decodedRawData, IrReceiver.decodedIRData.numberOfBits, IrReceiver.decodedIRData.flags);
+              IrReceiver.resume();
+            }
+        }
+     }
+  }
+#endif
+
   if(sec_save != second()) // only do stuff once per second
   {
     sec_save = second();
@@ -393,6 +497,8 @@ void loop()
         ee.update();
       }
     }
+    if (--ssCnt == 0) // keepalive
+      sendState();
   }
   delay(1);
 }
