@@ -2,7 +2,6 @@
 #define DISPLAY_H
 
 #include <Arduino.h>
-#include "watchFace.h"
 #include "arrows.h"
 
 // from 5-6-5 to 16 bit value (max 31, 63, 31)
@@ -60,6 +59,7 @@ enum Button_Function
   BTF_Stat,
   BTF_Clear,
   BTF_LearnIR,
+  BTF_PC_Media,
   BTF_Macro,
 };
 
@@ -121,6 +121,10 @@ public:
   void init(void);
   void oneSec(void);
   void service(void);
+  void exitScreensaver(void);
+  void notify(char *pszNote);
+  void setPcVolume(int8_t iValue);
+  void RingIndicator(uint8_t n);
 
 private:
   void drawScreen(int8_t scr, bool bFirst);
@@ -130,7 +134,6 @@ private:
   void buttonCmd(Button *pBtn, bool bRepeat);
   void sliderCmd(uint8_t nType, uint8_t nOldVal, uint8_t nNewVal);
   void dimmer(void);
-  void notify(char *pszNote);
   void drawSlider(uint8_t val);
   void updateRSSI(void);
   void drawTime(void);
@@ -148,7 +151,7 @@ private:
       0,
       0,
       0,
-      watchFace,
+      0,//watchFace,
       {
         {0}, // no buttons
       }
@@ -163,12 +166,12 @@ private:
       0,
       NULL,
       { // ID, F, text, icons, row, w, h, func, {addr, code}, x, y
-        { 1, 0, "TV",     {0}, 0, 48, 28, BTF_IR, {SAMSUNG, 0, 0x34}},
-        { 2, 0, "AMP",    {0}, 0, 48, 28, BTF_IR, {0, 0, 0x34}},
-        { 3, 0, "DVD",    {0}, 0, 48, 28, BTF_IR, {0, 0, 0x34}},
-        { 1, 0, "Light",  {0}, 1, 48, 28, BTF_Lights, {0}}, // LivingRoom ID = 1
-        { 2, 0, "Switch", {0}, 1, 48, 28, BTF_Lights, {0}}, // Other switch ID = 2
-        { 1, 0, "Learn",  {0}, 2, 48, 28, BTF_LearnIR, {0}},
+        { 1, 0, "TV",     {0}, 0, 48, 30, BTF_IR, {SAMSUNG, 0x707,230, 3}},
+        { 2, 0, "AMP",    {0}, 0, 48, 30, BTF_IR, {0, 0, 0x34}},
+        { 3, 0, "DVD",    {0}, 0, 48, 30, BTF_IR, {0, 0, 0x34}},
+        { 1, 0, "Light",  {0}, 1, 48, 30, BTF_Lights, {0}}, // LivingRoom ID = 1
+        { 2, 0, "Switch", {0}, 1, 48, 30, BTF_Lights, {0}}, // Other switch ID = 2
+        { 1, 0, "Learn",  {0}, 2, 48, 30, BTF_LearnIR, {0}},
       },
     },
     // screen 2
@@ -181,22 +184,22 @@ private:
       0,
       NULL,
       {
-        { 1, 0, "1", {0}, 0, 48, 28, BTF_IR, {SAMSUNG,0,1}},
-        { 2, 0, "2", {0}, 0, 48, 28, BTF_IR, {SAMSUNG,0,2}},
-        { 3, 0, "3", {0}, 0, 48, 28, BTF_IR, {SAMSUNG,0,3}},
-        {13, BF_REPEAT, NULL,   {i_up, 0}, 0, 28, 28, BTF_IR, {SAMSUNG, 2,0}},
-        { 4, 0, "4", {0}, 1, 48, 28, BTF_IR, {SAMSUNG,0,4}},
-        { 5, 0, "5", {0}, 1, 48, 28, BTF_IR, {SAMSUNG,0,5}},
-        { 6, 0, "6", {0}, 1, 48, 28, BTF_IR, {SAMSUNG,0,6}},
-        {14, BF_REPEAT, NULL,   {i_dn, 0}, 1, 28, 28, BTF_IR, {SAMSUNG, 2,0}},
-        { 7, 0, "7", {0}, 2, 48, 28, BTF_IR, {SAMSUNG,0,7}},
-        { 8, 0, "8", {0}, 2, 48, 28, BTF_IR, {SAMSUNG,0,8}},
-        { 9, 0, "9", {0}, 2, 48, 28, BTF_IR, {SAMSUNG,0,9}},
-        {15, BF_REPEAT, NULL,   {i_up, 0}, 2, 28, 28, BTF_IR, {SAMSUNG, 2,0}},
-        {11, 0, "H", {0}, 3, 48, 28, BTF_IR, {SAMSUNG,0,11}},
-        {10, 0, "0", {0}, 3, 48, 28, BTF_IR, {SAMSUNG,0,10}},
-        {12, 0, "<", {0}, 3, 48, 28, BTF_IR, {SAMSUNG,0,12}},
-        {16, BF_REPEAT, NULL,   {i_dn, 0}, 3, 28, 28, BTF_IR, {SAMSUNG, 2,0}},
+        { 1, 0, "1", {0}, 0, 48, 32, BTF_IR, {SAMSUNG,0x707,4, 3}},
+        { 2, 0, "2", {0}, 0, 48, 32, BTF_IR, {SAMSUNG,0x707,5,3}},
+        { 3, 0, "3", {0}, 0, 48, 32, BTF_IR, {SAMSUNG,0x707,6,3}},
+        {13, BF_REPEAT, NULL,   {i_up, 0}, 0, 32, 32, BTF_IR, {SAMSUNG, 0x707,16, 3}},
+        { 4, 0, "4", {0}, 1, 48, 32, BTF_IR, {SAMSUNG,0x707,8,3}},
+        { 5, 0, "5", {0}, 1, 48, 32, BTF_IR, {SAMSUNG,0x707,9,3}},
+        { 6, 0, "6", {0}, 1, 48, 32, BTF_IR, {SAMSUNG,0x707,10,3}},
+        {14, BF_REPEAT, NULL,   {i_dn, 0}, 1, 32, 32, BTF_IR, {SAMSUNG, 0x707,18,3}},
+        { 7, 0, "7", {0}, 2, 48, 32, BTF_IR, {SAMSUNG,0x707,11,3}},
+        { 8, 0, "8", {0}, 2, 48, 32, BTF_IR, {SAMSUNG,0x707,12,3}},
+        { 9, 0, "9", {0}, 2, 48, 32, BTF_IR, {SAMSUNG,0x707,13,3}},
+        {15, BF_REPEAT, NULL,   {i_up, 0}, 2, 32, 32, BTF_IR, {SAMSUNG, 0x707,0x61,3}},
+        {11, 0, "H", {0}, 3, 48, 32, BTF_IR, {SAMSUNG,0x707,0x79,3}},
+        {10, 0, "0", {0}, 3, 48, 32, BTF_IR, {SAMSUNG,0x707,0x11,3}},
+        {12, 0, "<", {0}, 3, 48, 32, BTF_IR, {SAMSUNG,0x707,0x13,3}},
+        {16, BF_REPEAT, NULL,   {i_dn, 0}, 3, 32, 32, BTF_IR, {SAMSUNG, 0x707,11,3}},
       }
     },
     // screen
@@ -209,13 +212,13 @@ private:
       0,
       NULL,
       {
-        {1, BF_REPEAT, NULL,   {i_lt, 0}, 0, 28, 28, BTF_BLE, {2,0}},
-        {2, 0,        "Play",  {0}, 0, 60, 28, BTF_BLE, {8,0}},
-        {3, BF_REPEAT, NULL,   {i_rt, 0}, 0, 28, 28, BTF_BLE, {1,0}},
-        {4, 0,        "Stop",  {0}, 1, 60, 28, BTF_BLE, {4,0}},
-        {5, 0,        "Vol Up",{0}, 2, 60, 28, BTF_BLE, {32,0}},
-        {6, 0,        "Mute",  {0}, 2, 60, 28, BTF_BLE, {16,0}},
-        {7, 0,        "Vol Dn",{0}, 2, 60, 28, BTF_BLE, {64,0}},
+        {1, BF_REPEAT, NULL,   {i_lt, 0}, 0, 32, 32, BTF_PC_Media, {3,0}},
+        {2, 0,        "Play",  {0}, 0, 60, 32, BTF_PC_Media, {0,0}},
+        {3, BF_REPEAT, NULL,   {i_rt, 0}, 0, 32, 32, BTF_PC_Media, {2,0}},
+        {4, 0,         "STOP",  {0}, 1, 60, 32, BTF_PC_Media, {1,0}},
+        {5, BF_REPEAT, "Vol Up",{0}, 2, 60, 32, BTF_PC_Media, {5,0}},
+        {6, 0,         "Mute",  {0}, 2, 60, 32, BTF_PC_Media, {4,0}},
+        {7, BF_REPEAT, "Vol Dn",{0}, 2, 60, 32, BTF_PC_Media, {6,0}},
       }
     },
     // screen
@@ -241,8 +244,8 @@ private:
       0,
       NULL,
       {
-        {1, 0, NULL, {i_up, 0},  0, 28, 28, BTF_Stat, {0}},
-        {2, 0, NULL, {i_dn, 0},  1,  28, 28, BTF_Stat, {0}},
+        {1, 0, NULL, {i_up, 0},  0, 32, 32, BTF_Stat, {0}},
+        {2, 0, NULL, {i_dn, 0},  1,  32, 32, BTF_Stat, {0}},
       }
     },
     // Pull-up screen (last)
