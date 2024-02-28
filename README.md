@@ -31,3 +31,5 @@ SERVER_ENABLE can be disabled as well to reduce space. It's currently just used 
 
 The IR sender/receiver is designed to be built easily using common parts, but Arduino IR modules should be compatible.  The top-side components are for the IR. If using an NPN transistor for the sender, subtract the vF from 3.3 for R1 plus the IR LED vF. 110 ohms should be good for a MOSFET and 1.2V LED. The bottom side is for battery voltage reading, since there is no way to determine voltage or charging/discharging state. This will connect to the IO8 pad (which has ADC) and BAT+, and can be triggered by pulsing the IR TX output.  
 
+The web page. This is used to decode remotes and test output commands. Just hit the decode button and start pushing buttons on a remote. Those values can be entered in the button code[4] array of any buttons created. Mixed remotes on one page, or all the same. Doesn't matter.  
+![uremoteweb](https://curioustech.net/images/uremoteweb.png)  
