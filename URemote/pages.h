@@ -20,13 +20,37 @@ body{width:470px;display:block;margin-left:auto;margin-right:auto;font-family: A
 a=document.all
 idx=0
 dys=[['Sun'],['Mon'],['Tue'],['Wed'],['Thu'],['Fri'],['Sat']]
-protos=[['Samsung'],['Samsung16'],['Samsung48'],['Denon'],['LG'],['LG2'],['Panasonic'],['Sharp'],['Sony'],['Apple'],['NEC'],['NEC2'],['Onkyo']]
+protos=[
+    ['UNKNOWN'],
+    ['PULSE_WIDTH'],
+    ['PULSE_DISTANCE'],
+    ['APPLE'],
+    ['DENON'],
+    ['JVC'],
+    ['LG'],
+    ['LG2'],
+    ['NEC'],
+    ['NEC2'], /* NEC with full frame as repeat */
+    ['ONKYO'],
+    ['PANASONIC'],
+    ['KASEIKYO'],
+    ['KASEIKYO_DENON'],
+    ['KASEIKYO_SHARP'],
+    ['KASEIKYO_JVC'],
+    ['KASEIKYO_MITSUBISHI'],
+    ['RC5'],
+    ['RC6'],
+    ['SAMSUNG'],
+    ['SAMSUNG48'],
+    ['SAMSUNG_LG'],
+    ['SHARP'],
+    ['SONY'],
+]
 $(document).ready(function(){
   openSocket()
   for(i=0;i<protos.length;i++)
     document.getElementById("r"+i).innerHTML=protos[i]
   a.proto.innerHTML=protos[0]
-  a.OUT.value = 'this is a test'
 })
 
 function openSocket(){
@@ -47,7 +71,18 @@ function openSocket(){
   }
   else if(d.cmd=='print')
   {
-    a.OUT.value += d.text
+    a.OUT.value += d.text + '\n'
+    a.OUT.scrollTop = a.OUT.scrollHeight 
+  }
+  else if(d.cmd=='decode')
+  {
+    a.OUT.value += 'Protocol: '+protos[d.proto]+' Addr:'+d.addr.toString(16)+' Cmd:'+d.code.toString(16)+' Raw:'+d.raw.toString(16)+' Bits:'+d.bits+'\n'
+    a.OUT.scrollTop = a.OUT.scrollHeight 
+  }
+  else if(d.cmd=='send')
+  {
+    a.OUT.value += 'Transmitted: '+protos[d.proto]+' Addr:'+d.addr.toString(16)+' Cmd:'+d.code.toString(16)+' Reps:'+d.rep+'\n'
+    a.OUT.scrollTop = a.OUT.scrollHeight 
   }
   else if(d.cmd=='alert'){alert(d.text)}
  }
@@ -61,14 +96,23 @@ function setVar(varName, value)
 function setProto(b)
 {
  a.proto.innerHTML=protos[b]
- a.OUT.value += '\r\nSetting to ' + protos[b]
+ a.OUT.value += 'Setting to ' + protos[b] + '\n'
+ a.OUT.scrollTop = a.OUT.scrollHeight 
  setVar('PROTO', b)
 }
 
 function sendCode()
 {
- ws.send('{"ADDR":'+a.ADDR.value+',"CODE":'+a.CODE.value+'}')
+ addr=parseInt(a.ADDR.value,16)
+ code=parseInt(a.CODE.value,16)
+ ws.send('{"ADDR":'+addr+',"CODE":'+code+',"REP":'+a.REP.value+'}')
 }
+
+function rxCode()
+{
+ ws.send('{"RX":'+0+'}')
+}
+
 </script>
 <style type="text/css">
 input{
@@ -114,7 +158,6 @@ input{
 </head>
 <body bgcolor="silver">
 <table width=450>
-<tr><td>   </td><td><div id="time"></div></td></tr>
 <tr><td>
 <div class="dropdown">
   <button class="dropbtn">Protocol</button>
@@ -133,17 +176,31 @@ input{
   <button class="btn" id="r11" onclick="setProto(11)"></button>
   <button class="btn" id="r12" onclick="setProto(12)"></button>
   <button class="btn" id="r13" onclick="setProto(13)"></button>
+  <button class="btn" id="r14" onclick="setProto(14)"></button>
+  <button class="btn" id="r15" onclick="setProto(15)"></button>
+  <button class="btn" id="r16" onclick="setProto(16)"></button>
+  <button class="btn" id="r17" onclick="setProto(17)"></button>
+  <button class="btn" id="r18" onclick="setProto(18)"></button>
+  <button class="btn" id="r19" onclick="setProto(19)"></button>
+  <button class="btn" id="r20" onclick="setProto(20)"></button>
+  <button class="btn" id="r21" onclick="setProto(21)"></button>
+  <button class="btn" id="r22" onclick="setProto(22)"></button>
+  <button class="btn" id="r23" onclick="setProto(23)"></button>
   </div>
 </div>
 </td>
-<td>
-<div id="proto"></div>
-</td>
-<td>
-Address:<input name="ADDR" type=text size=1 value='0'>
+<td><div id="proto"></div></td>
+<td><div id="time"></div></td>
+<td><input name="RX" type=button value="Decode" onclick="rxCode();"></td>
+</tr>
+<tr>
+<td colspan="3">
+Addr:<input name="ADDR" type=text size=1 value='0'>
  Code:<input name="CODE" type=text size=1 value='0'>
- <input name="SEND" type=button value="Send" onselect="sendCode();">
+ Reps:<input name="REP" type=text size=1 value='0'>
 </td>
+<td><input name="SEND" type=button value="Send" onclick="sendCode();"></td>
+<td></td>
 </tr>
 </table>
 <table>
