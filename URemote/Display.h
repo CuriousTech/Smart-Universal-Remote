@@ -102,6 +102,7 @@ struct Button
 struct Screen
 {
   const char szTitle[16];   // Top text
+  uint8_t nRow;
   uint8_t Extras;           // See EX_ flags
   uint8_t nSliderType;      // see slider_type
   uint8_t nSliderValue;     // 0-100 value of screen's slider
@@ -141,11 +142,13 @@ private:
   void drawClock(void);
   void cspoint(uint16_t &x2, uint16_t &y2, uint16_t x, uint16_t y, float angle, float size);
 
-  Screen m_screen[9] =
+#define SCREENS 9
+  Screen m_screen[SCREENS] =
   {
     // screen 0 (top/pull-down screen)
     {
       "",
+      0,
       EX_RSSI | EX_CLOCK | EX_TIME,
       SL_None,
       0,
@@ -159,6 +162,7 @@ private:
     // screen 1 (left-most horizontal screen)
     {
       "Power",
+      1,
       0,
       SL_None,
       0,
@@ -177,6 +181,7 @@ private:
     // screen 2
     {
       "TV",
+      2,
       0,
       0,
       0,
@@ -205,6 +210,7 @@ private:
     // screen
     {
       "PC",
+      2,
       0,
       SL_PC,
       0,
@@ -224,6 +230,7 @@ private:
     // screen
     {
       "Lights",
+      2,
       EX_SCROLL,
       SL_Lights,
       0,
@@ -237,6 +244,22 @@ private:
     // Screen
     {
       "Thermostat",
+      3,
+      0,
+      SL_None,
+      0,
+      0,
+      0,
+      NULL,
+      {
+        {1, 0, NULL, {i_up, 0},  0, 32, 32, BTF_Stat, {0}},
+        {2, 0, NULL, {i_dn, 0},  1,  32, 32, BTF_Stat, {0}},
+      }
+    },
+    // Screen
+    {
+      "Thermostat 2",
+      3,
       0,
       SL_None,
       0,
@@ -251,6 +274,7 @@ private:
     // Pull-up screen (last)
     {
       "Settings",
+      4,
       EX_RSSI,
       SL_None,
       0,
@@ -265,6 +289,7 @@ private:
     // Notification screen (very last)
     {
       "Notifications",
+      5,
       EX_NOTIF | EX_SCROLL,
       SL_None,
       0,
@@ -283,6 +308,8 @@ private:
   int8_t m_currScreen = 0; // start screen
   uint32_t m_nDispFreeze;
   uint8_t m_blSurgeTimer; // timer to stop shutoff
+  uint8_t m_nRowStart[SCREENS]; // index of screen at row
+  uint8_t m_nColCnt[SCREENS]; // column count for each row of screens
 #define NOTE_CNT 10
   char *m_pszNotifs[NOTE_CNT + 1];
 
