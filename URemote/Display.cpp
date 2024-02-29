@@ -50,9 +50,16 @@ void Display::init(void)
 
   pinMode(TP_INT, INPUT);
 
-  // count screens and format the bottons
-  for(m_scrnCnt = 0; m_screen[m_scrnCnt].Extras || m_screen[m_scrnCnt].szTitle[0] || m_screen[m_scrnCnt].pBGImage; m_scrnCnt++) // count screens
+  // count screens, index rows, count columns, format the buttons
+  uint8_t nRowIdx = 0;
+
+  for(m_scrnCnt = 1; m_scrnCnt < SCREENS && m_screen[m_scrnCnt].Extras || m_screen[m_scrnCnt].szTitle[0] || m_screen[m_scrnCnt].pBGImage; m_scrnCnt++) // count screens
+  {
+    m_nColCnt[nRowIdx]++;
+    if(m_screen[m_scrnCnt].nRow != nRowIdx)
+      m_nRowStart[++nRowIdx] = m_scrnCnt;
     formatButtons(m_screen[m_scrnCnt]);
+  }
 
   drawScreen(m_currScreen, true);
   sprite.pushSprite(0, 0); // draw screen 0 on start
@@ -75,7 +82,6 @@ void Display::service(void)
   static Button *pCurrBtn; // for button repeats and release
   static uint32_t lastms; // for button repeats
   static bool bGestured;  // gesture detected
-  static uint8_t lastScreen = 1; // current horiz screen
 
   dimmer();
 
@@ -91,11 +97,13 @@ void Display::service(void)
     ss.run();
 #endif
   uint8_t gesture;
+  uint8_t nRowOffset;
   static bool bScrolling; // scrolling active
   uint16_t touchX, touchY;
   static int16_t touchXstart, touchYstart; // first touch pos for scolling and non-moving detect
   static uint32_t touchStartMS; // timing for 
-
+  static uint8_t nCurrRow;
+ 
   if ( !touch.getTouch(&touchX, &touchY, &gesture) ) // no touch
   {
     if(pCurrBtn)
@@ -158,23 +166,23 @@ void Display::service(void)
           if(touchY - touchYstart || touchX - touchXstart) // movement, not a direct touch
             return;
           Button *pBtn = &pScreen.button[0];
-          for(uint8_t i = 0; pBtn[i].x; i++)
+          for(uint8_t i = 0; pBtn[i].x; i++) // check for press in button bounds
           {
             int16_t y = pBtn[i].y;
 
-            if( !(pBtn->flags & BF_FIXED_Y) )
+            if( !(pBtn->flags & BF_FIXED_Y) ) // adjust for scroll offset
               y -= pScreen.nScrollIndex;
   
             if (touchX >= pBtn[i].x && touchX <= pBtn[i].x + pBtn[i].w && touchY >= y && touchY <= y + pBtn[i].h)
             {
               pCurrBtn = &pBtn[i];
-              drawButton(pScreen, pCurrBtn, true);
+              drawButton(pScreen, pCurrBtn, true); // draw pressed state
               sprite.pushSprite(0, 0);
               buttonCmd(pCurrBtn, false);
+              lastms = millis() - 300; // slow first repeat (300+300ms)
               break;
             }
           }
-          lastms = millis() - 300; // slow first repeat (300+300ms)
         }
       }
       else if(millis() - lastms > 300) // repeat speed
@@ -189,16 +197,24 @@ void Display::service(void)
       switch(gesture)
       {
         case SlideRight:
-          if(pCurrBtn || m_currScreen <= 1 || m_currScreen >= m_scrnCnt - 2) // top/bottom screens don't slide horiz
+          if(pCurrBtn || m_currScreen <= 0) // don't screoll if button pressed or screen 0
             break;
+
+          if(m_screen[m_currScreen].nRow != m_screen[m_currScreen-1].nRow) // don't scroll left if leftmost
+            break;
+
           m_currScreen--;
           drawScreen(m_currScreen, true);
           for(int16_t i = -DISPLAY_WIDTH; i <= 0; i += 8)
             sprite.pushSprite(i, 0);
           break;
         case SlideLeft:
-          if(pCurrBtn || m_currScreen == 0 || m_currScreen >= m_scrnCnt - 3) // top/bottom screens don't slide horiz
+          if(pCurrBtn || m_currScreen >= m_scrnCnt - 1) // don't scroll if button pressed or last screen
             break;
+
+          if(m_screen[m_currScreen].nRow != m_screen[m_currScreen+1].nRow) // don't scroll right if rightmost
+            break;
+
           m_currScreen++;
           drawScreen(m_currScreen, true);
           for(int16_t i = DISPLAY_WIDTH; i >= 0; i -= 8)
@@ -211,22 +227,13 @@ void Display::service(void)
             break;
           }
 
-          if(pCurrBtn || m_currScreen == 0) // don't slide up from top
+          if(pCurrBtn || m_currScreen == 0 || nCurrRow == 0) // don't slide up from top
             break;
 
-          if(m_currScreen < m_scrnCnt-2) // not bottom screens
-          {
-            lastScreen = m_currScreen;
-            m_currScreen = 0;
-          }
-          else if(m_currScreen == m_scrnCnt-1) // notifications
-          {
-            m_currScreen = m_scrnCnt-2; // settings
-          }
-          else // settings
-          {
-            m_currScreen = lastScreen; // the saved left-right screen
-          }
+          nRowOffset = m_currScreen - m_nRowStart[nCurrRow];
+          nCurrRow--;
+          m_currScreen = m_nRowStart[nCurrRow] + min((int)nRowOffset, m_nColCnt[nCurrRow]-1 ); // get close to the adjacent screen
+
           drawScreen(m_currScreen, true);
           for(int16_t i = -DISPLAY_HEIGHT; i <= 0; i += 8)
             sprite.pushSprite(0, i);
@@ -238,20 +245,15 @@ void Display::service(void)
             break;
           }
 
-          if(pCurrBtn || m_currScreen >= m_scrnCnt - 1) // notifications
+          if(pCurrBtn) // don't slide if button pressed
             break;
-          if(m_currScreen == m_scrnCnt - 2) // settings
-          {
-            m_currScreen = m_scrnCnt - 1;
-          }
-          else if(m_currScreen != 0) // not upscreen
-          {
-            lastScreen = m_currScreen;
-            m_currScreen = m_scrnCnt - 2;
-          }
-          else // Screen 0
-          {
-            m_currScreen = lastScreen; // the saved left to right screen            
+
+          nRowOffset = m_currScreen - m_nRowStart[nCurrRow];
+          nCurrRow++;
+          { // fix
+            uint8_t nCS = m_nRowStart[nCurrRow] + min((int)nRowOffset, m_nColCnt[nCurrRow]-1 );
+            if(nCS < m_scrnCnt) m_currScreen = nCS;
+            else{ nCurrRow--; break;}// back out
           }
           drawScreen(m_currScreen, true);
           for(int16_t i = DISPLAY_HEIGHT; i >= 0; i -= 8)
@@ -763,7 +765,7 @@ void Display::drawClock()
     uint16_t xH,yH,xH2,yH2;
     cspoint(xH, yH, x, y, i, 114); // outer edge
     cspoint(xH2, yH2, x, y, i, (i%30) ? 103:94); // 60 ticks/12 longer ticks
-    sprite.drawWideLine(xH, yH, xH2, yH2, (i%30) ? 2:3, TFT_WHITE, TFT_BLACK); // 12 wider ticks
+    sprite.drawWideLine(xH, yH, xH2, yH2, (i%30) ? 2:3, TFT_SILVER, TFT_BLACK); // 12 wider ticks
   }
 
   if(year() < 2024)
