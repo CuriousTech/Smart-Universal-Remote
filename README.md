@@ -29,7 +29,7 @@ The ESP32C3 has 4MB flash, and around 380KB SRAM, which really isn't enough for 
 
 SERVER_ENABLE can be disabled as well to reduce space. It's currently just used to test IR remote codes, and will display received data as well.  
 
-[TinkerCAD Case Model](https://www.tinkercad.com/things/gB9CoUS346H-esp32-2424s012-remote) For editing the 3D print model.  
+[TinkerCAD Case Model](https://www.tinkercad.com/things/gB9CoUS346H-esp32-2424s012-remote) For editing the 3D print model. WARNING: Be very careful with the LCD ribbon at the bottom. Pressure on this can break it easily. Scrape that area on the print (where you can see light in the pics) to ensure it's not pressing against the ribbon. A little black paint can cover the light easily.  
 
 The IR sender/receiver is designed to be built easily using common parts, but Arduino IR modules should be compatible.  The top-side components are for the IR. If using an NPN transistor for the sender, subtract the vF from 3.3 for R1 plus the IR LED vF. 110 ohms should be good for a MOSFET and 1.2V LED. The bottom side is for battery voltage reading, since there is no way to determine voltage or charging/discharging state. NOTE: This option failed due to the ESP32C3 not having the ADC mapped as documented. So, no battery monitoring is possible, plus the labels on the IRIO board are swapped.  My bad.  
 
