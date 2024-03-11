@@ -18,6 +18,8 @@ extern bool sendBLE(uint16_t *pCode);
 
 extern bool sendPCMediaCmd( uint16_t *pCode);
 
+extern void consolePrint(String s); // for browser debug
+
 #define I2C_SDA 4
 #define I2C_SCL 5
 #define TP_INT 0
@@ -50,18 +52,18 @@ void Display::init(void)
 
   pinMode(TP_INT, INPUT);
 
-  // count screens, index rows, count columns, format the buttons
+  // count tiles, index rows, count columns, format the buttons
   uint8_t nRowIdx = 0;
 
-  for(m_scrnCnt = 1; m_scrnCnt < SCREENS && m_screen[m_scrnCnt].Extras || m_screen[m_scrnCnt].szTitle[0] || m_screen[m_scrnCnt].pBGImage; m_scrnCnt++) // count screens
+  for(m_nTileCnt = 1; m_nTileCnt < TILES && (m_tile[m_nTileCnt].Extras || m_tile[m_nTileCnt].szTitle[0] || m_tile[m_nTileCnt].pBGImage); m_nTileCnt++) // count screens
   {
     m_nColCnt[nRowIdx]++;
-    if(m_screen[m_scrnCnt].nRow != nRowIdx)
-      m_nRowStart[++nRowIdx] = m_scrnCnt;
-    formatButtons(m_screen[m_scrnCnt]);
+    if(m_tile[m_nTileCnt].nRow != nRowIdx)
+      m_nRowStart[++nRowIdx] = m_nTileCnt;
+    formatButtons(m_tile[m_nTileCnt]);
   }
 
-  drawScreen(m_currScreen, true);
+  drawTile(m_nCurrTile, true);
   sprite.pushSprite(0, 0); // draw screen 0 on start
 }
 
@@ -71,7 +73,7 @@ void Display::exitScreensaver()
 
   if( m_brightness == ee.brightLevel[0] ) // screensaver active
   {
-    drawScreen(m_currScreen, true); // draw over screensaver
+    drawTile(m_nCurrTile, true); // draw over screensaver
     sprite.pushSprite(0, 0);
   }
   m_brightness = ee.brightLevel[1]; // increase brightness for any touch
@@ -108,7 +110,7 @@ void Display::service(void)
   {
     if(pCurrBtn)
     {
-      drawButton(m_screen[m_currScreen], pCurrBtn, false); // draw released button
+      drawButton(m_tile[m_nCurrTile], pCurrBtn, false); // draw released button
       sprite.pushSprite(0, 0);
     }
     pCurrBtn = NULL;
@@ -120,7 +122,7 @@ void Display::service(void)
   else
   {
     m_backlightTimer = DISPLAY_TIMEOUT; // reset timer for any touch
-    Screen& pScreen = m_screen[m_currScreen];
+    Tile& pTile = m_tile[m_nCurrTile];
 
     if( m_brightness < ee.brightLevel[1] ) // ignore input until brightness is full
     {
@@ -129,22 +131,22 @@ void Display::service(void)
     }
 
     // Handle slider
-    if(pScreen.nSliderType && touchX > DISPLAY_WIDTH - 70 )
+    if(pTile.nSliderType && touchX > DISPLAY_WIDTH - 70 )
     {
       uint8_t val = (uint8_t)(float)(DISPLAY_HEIGHT - 40 - touchY) * 0.7;
       if(val > 100) val = 100;
       drawSlider(val);
       sprite.pushSprite(0, 0);
-      if(pScreen.nSliderValue != val)
+      if(pTile.nSliderValue != val)
       {
-        sliderCmd(pScreen.nSliderType, pScreen.nSliderValue, val);
-        pScreen.nSliderValue = val;
+        sliderCmd(pTile.nSliderType, pTile.nSliderValue, val);
+        pTile.nSliderValue = val;
       }
     }
     else if(bScrolling) // scrolling detected
     {
       if(touchY - touchYstart)
-        scrollPage(m_currScreen, touchY - touchYstart);
+        scrollPage(m_nCurrTile, touchY - touchYstart);
       touchYstart = touchY;
     }
     else if(gesture == None || gesture == LongPress) // normal press or hold
@@ -165,18 +167,18 @@ void Display::service(void)
         {
           if(touchY - touchYstart || touchX - touchXstart) // movement, not a direct touch
             return;
-          Button *pBtn = &pScreen.button[0];
+          Button *pBtn = &pTile.button[0];
           for(uint8_t i = 0; pBtn[i].x; i++) // check for press in button bounds
           {
             int16_t y = pBtn[i].y;
 
-            if( !(pBtn->flags & BF_FIXED_Y) ) // adjust for scroll offset
-              y -= pScreen.nScrollIndex;
+            if( !(pBtn->flags & BF_FIXED_POS) ) // adjust for scroll offset
+              y -= pTile.nScrollIndex;
   
             if (touchX >= pBtn[i].x && touchX <= pBtn[i].x + pBtn[i].w && touchY >= y && touchY <= y + pBtn[i].h)
             {
               pCurrBtn = &pBtn[i];
-              drawButton(pScreen, pCurrBtn, true); // draw pressed state
+              drawButton(pTile, pCurrBtn, true); // draw pressed state
               sprite.pushSprite(0, 0);
               buttonCmd(pCurrBtn, false);
               lastms = millis() - 300; // slow first repeat (300+300ms)
@@ -197,49 +199,49 @@ void Display::service(void)
       switch(gesture)
       {
         case SlideRight:
-          if(pCurrBtn || m_currScreen <= 0) // don't screoll if button pressed or screen 0
+          if(pCurrBtn || m_nCurrTile <= 0) // don't screoll if button pressed or screen 0
             break;
 
-          if(m_screen[m_currScreen].nRow != m_screen[m_currScreen-1].nRow) // don't scroll left if leftmost
+          if(m_tile[m_nCurrTile].nRow != m_tile[m_nCurrTile-1].nRow) // don't scroll left if leftmost
             break;
 
-          m_currScreen--;
-          drawScreen(m_currScreen, true);
+          m_nCurrTile--;
+          drawTile(m_nCurrTile, true);
           for(int16_t i = -DISPLAY_WIDTH; i <= 0; i += 8)
             sprite.pushSprite(i, 0);
           break;
         case SlideLeft:
-          if(pCurrBtn || m_currScreen >= m_scrnCnt - 1) // don't scroll if button pressed or last screen
+          if(pCurrBtn || m_nCurrTile >= m_nTileCnt - 1) // don't scroll if button pressed or last screen
             break;
 
-          if(m_screen[m_currScreen].nRow != m_screen[m_currScreen+1].nRow) // don't scroll right if rightmost
+          if(m_tile[m_nCurrTile].nRow != m_tile[m_nCurrTile+1].nRow) // don't scroll right if rightmost
             break;
 
-          m_currScreen++;
-          drawScreen(m_currScreen, true);
+          m_nCurrTile++;
+          drawTile(m_nCurrTile, true);
           for(int16_t i = DISPLAY_WIDTH; i >= 0; i -= 8)
             sprite.pushSprite(i, 0);
           break;
         case SlideDown:
-          if((pScreen.Extras & EX_SCROLL) && touchY - touchYstart < 20) // slow/short flick
+          if((pTile.Extras & EX_SCROLL) && touchY - touchYstart < 20) // slow/short flick
           {
             bScrolling = true;
             break;
           }
 
-          if(pCurrBtn || m_currScreen == 0 || nCurrRow == 0) // don't slide up from top
+          if(pCurrBtn || m_nCurrTile == 0 || nCurrRow == 0) // don't slide up from top
             break;
 
-          nRowOffset = m_currScreen - m_nRowStart[nCurrRow];
+          nRowOffset = m_nCurrTile - m_nRowStart[nCurrRow];
           nCurrRow--;
-          m_currScreen = m_nRowStart[nCurrRow] + min((int)nRowOffset, m_nColCnt[nCurrRow]-1 ); // get close to the adjacent screen
+          m_nCurrTile = m_nRowStart[nCurrRow] + min((int)nRowOffset, m_nColCnt[nCurrRow]-1 ); // get close to the adjacent screen
 
-          drawScreen(m_currScreen, true);
+          drawTile(m_nCurrTile, true);
           for(int16_t i = -DISPLAY_HEIGHT; i <= 0; i += 8)
             sprite.pushSprite(0, i);
           break;
         case SlideUp:
-          if((pScreen.Extras & EX_SCROLL) && touchYstart - touchY < 20) // slow/short flick
+          if((pTile.Extras & EX_SCROLL) && touchYstart - touchY < 20) // slow/short flick
           {
             bScrolling = true;
             break;
@@ -248,14 +250,14 @@ void Display::service(void)
           if(pCurrBtn) // don't slide if button pressed
             break;
 
-          nRowOffset = m_currScreen - m_nRowStart[nCurrRow];
+          nRowOffset = m_nCurrTile - m_nRowStart[nCurrRow];
           nCurrRow++;
           { // fix
             uint8_t nCS = m_nRowStart[nCurrRow] + min((int)nRowOffset, m_nColCnt[nCurrRow]-1 );
-            if(nCS < m_scrnCnt) m_currScreen = nCS;
+            if(nCS < m_nTileCnt) m_nCurrTile = nCS;
             else{ nCurrRow--; break;}// back out
           }
-          drawScreen(m_currScreen, true);
+          drawTile(m_nCurrTile, true);
           for(int16_t i = DISPLAY_HEIGHT; i >= 0; i -= 8)
             sprite.pushSprite(0, i);
           break;
@@ -300,7 +302,7 @@ void Display::oneSec()
 
   if(m_brightness > ee.brightLevel[0] && m_nDispFreeze == 0) // not screensaver
   {
-    drawScreen(m_currScreen, false);
+    drawTile(m_nCurrTile, false);
     sprite.pushSprite(0,0);
   }
 
@@ -324,75 +326,75 @@ void Display::oneSec()
       bQDone = true;
       // Find SL_Lights screen
       uint8_t nLi = 0;
-      while(m_screen[nLi].nSliderType != SL_Lights && (m_screen[nLi].szTitle[0] || m_screen[nLi].Extras) )
+      while(m_tile[nLi].nSliderType != SL_Lights && (m_tile[nLi].szTitle[0] || m_tile[nLi].Extras) )
         nLi++;
 
-      Screen& pScreen = m_screen[nLi];
+      Tile& pTile = m_tile[nLi];
 
-      if(pScreen.nSliderType == SL_Lights)
+      if(pTile.nSliderType == SL_Lights)
       {
         for(uint8_t i = 0; i < BUTTON_CNT; i++)
         {
           if(ee.lights[i].szName[0] == 0)
             break;
-          pScreen.button[i].pszText = ee.lights[i].szName;
-          pScreen.button[i].ID = i + 1;
-          pScreen.button[i].row = i;
-          pScreen.button[i].w = 110;
-          pScreen.button[i].h = 28;
-          pScreen.button[i].nFunction = BTF_Lights;
+          pTile.button[i].pszText = ee.lights[i].szName;
+          pTile.button[i].ID = i + 1;
+          pTile.button[i].row = i;
+          pTile.button[i].w = 110;
+          pTile.button[i].h = 28;
+          pTile.button[i].nFunction = BTF_Lights;
         }
       }
-      formatButtons(pScreen);
+      formatButtons(pTile);
     }
   }
 }
 
-void Display::scrollPage(uint8_t nScrn, int16_t nDelta)
+void Display::scrollPage(uint8_t nTile, int16_t nDelta)
 {
-  Screen& pScreen = m_screen[nScrn];
+  Tile& pTile = m_tile[nTile];
 
-  if( !(pScreen.Extras & EX_SCROLL) )
+  if( !(pTile.Extras & EX_SCROLL) )
     return;
 
   uint8_t nViewSize = DISPLAY_HEIGHT;
-  if(pScreen.szTitle[0])
+  if(pTile.szTitle[0])
     nViewSize -= TITLE_HEIGHT;
 
-  if(pScreen.Extras & EX_NOTIF )
+  if(pTile.Extras & EX_NOTIF )
   {
     uint8_t nCnt;
     for(nCnt = 0; nCnt < NOTE_CNT && m_pszNotifs[nCnt]; nCnt++);
 
     if(nCnt) nCnt--; // fudge
-    pScreen.nPageHeight = nCnt * sprite.fontHeight();
+    pTile.nPageHeight = nCnt * sprite.fontHeight();
     nViewSize -= 28; // clear button
   }
 
-  if(pScreen.nPageHeight <= nViewSize) // not large enough to scroll
+  if(pTile.nPageHeight <= nViewSize) // not large enough to scroll
     return;
 
-  pScreen.nScrollIndex = constrain(pScreen.nScrollIndex - nDelta, -TITLE_HEIGHT, pScreen.nPageHeight - nViewSize);
+  pTile.nScrollIndex = constrain(pTile.nScrollIndex - nDelta, -TITLE_HEIGHT, pTile.nPageHeight - nViewSize);
 
-  drawScreen(nScrn, false);
+  drawTile(nTile, false);
   sprite.pushSprite(0,0);
 }
 
-void Display::formatButtons(Screen& pScreen)
+void Display::formatButtons(Tile& pTile)
 {
   sprite.setTextDatum(MC_DATUM); // center text on button
   sprite.setFreeFont(&FreeSans9pt7b);
 
   uint8_t btnCnt;
-  for( btnCnt = 0; btnCnt < BUTTON_CNT && pScreen.button[btnCnt].ID; btnCnt++) // count buttons
-    if( pScreen.button[btnCnt].w == 0 && pScreen.button[btnCnt].pszText && pScreen.button[btnCnt].pszText[0] ) // if no width
-      pScreen.button[btnCnt].w = sprite.textWidth(pScreen.button[btnCnt].pszText) + (BORDER_SPACE*2);   // calc width based on text width
+  for( btnCnt = 0; btnCnt < BUTTON_CNT && pTile.button[btnCnt].ID; btnCnt++) // count buttons
+    if( pTile.button[btnCnt].w == 0 && pTile.button[btnCnt].pszText && pTile.button[btnCnt].pszText[0] ) // if no width
+      pTile.button[btnCnt].w = sprite.textWidth(pTile.button[btnCnt].pszText) + (BORDER_SPACE*2);   // calc width based on text width
 
   if(btnCnt == 0)
     return;
 
   uint8_t btnIdx = 0;
-  uint8_t nRows = pScreen.button[btnCnt - 1].row + 1; // use last button for row total
+  uint8_t nRows = pTile.button[btnCnt - 1].row + 1; // use last button for row total
   uint8_t nRow = 0;
   uint8_t nCenter;
 
@@ -402,23 +404,28 @@ void Display::formatButtons(Screen& pScreen)
     uint8_t rBtns = 0;
     uint8_t rWidth = 0;
 
-    for(uint8_t i = btnIdx; i < btnCnt && pScreen.button[i].row == nRow; i++, rBtns++)  // count buttons for current row
+    for(uint8_t i = btnIdx; i < btnCnt && pTile.button[i].row == nRow; i++, rBtns++)  // count buttons for current row
     {
-      rWidth += pScreen.button[i].w + BORDER_SPACE; // total up width of row
+      if( pTile.button[i].x == 0 )
+      {
+        rWidth += pTile.button[i].w + BORDER_SPACE; // total up width of row
       // todo: find row height here, max up
+      }
     }
 
     nCenter = DISPLAY_WIDTH/2;
-    if( pScreen.nSliderType ) // shift left if slider active
+    if( pTile.nSliderType ) // shift left if slider active
       nCenter -= 20;
 
     uint8_t cx = nCenter - (rWidth >> 1);
 
     for(uint8_t i = btnIdx; i < btnIdx+rBtns; i++)
     {
-      if(pScreen.button[i].x == 0)
-        pScreen.button[i].x = cx;
-      cx += pScreen.button[i].w + BORDER_SPACE;
+      if(pTile.button[i].x == 0)
+      {
+        pTile.button[i].x = cx;
+        cx += pTile.button[i].w + BORDER_SPACE;
+      }
     }
 
     btnIdx += rBtns;
@@ -426,74 +433,90 @@ void Display::formatButtons(Screen& pScreen)
   }
 
   // Y positions
-  uint8_t nBtnH = pScreen.button[0].h;
+  uint8_t nBtnH = pTile.button[0].h;
 
   if(nRows) nRows--; // todo: something is amiss here
-  pScreen.nPageHeight = nRows * (nBtnH + BORDER_SPACE) - BORDER_SPACE;
+  pTile.nPageHeight = nRows * (nBtnH + BORDER_SPACE) - BORDER_SPACE;
 
   uint8_t nViewSize = DISPLAY_HEIGHT;
-  if(pScreen.szTitle[0])                                              // shrink view by title height
+  if(pTile.szTitle[0])                                              // shrink view by title height
     nViewSize -= TITLE_HEIGHT;
 
-  pScreen.nScrollIndex = 0;
+  pTile.nScrollIndex = 0;
 
   // ScrollIndex is added to button Y on draw and detect
-  if(!(pScreen.Extras & EX_NOTIF) && pScreen.nPageHeight <= nViewSize) // Center smaller page
-    pScreen.nScrollIndex = -(nViewSize - pScreen.nPageHeight) / 2;
-  else if(pScreen.szTitle[0])                                          // Just offset by title height if too large
-    pScreen.nScrollIndex -= (TITLE_HEIGHT + BORDER_SPACE);             // down past title
+  if(!(pTile.Extras & EX_NOTIF) && pTile.nPageHeight <= nViewSize) // Center smaller page
+    pTile.nScrollIndex = -(nViewSize - pTile.nPageHeight) / 2;
+  else if(pTile.szTitle[0])                                          // Just offset by title height if too large
+    pTile.nScrollIndex -= (TITLE_HEIGHT + BORDER_SPACE);             // down past title
 
   for(btnIdx = 0; btnIdx < btnCnt; btnIdx++ )
-    if( !(pScreen.button[ btnIdx ].flags & BF_FIXED_Y) )
-      pScreen.button[ btnIdx ].y = pScreen.button[ btnIdx ].row * (nBtnH + BORDER_SPACE);
+    if( !(pTile.button[ btnIdx ].flags & BF_FIXED_POS) )
+      pTile.button[ btnIdx ].y = pTile.button[ btnIdx ].row * (nBtnH + BORDER_SPACE);
 }
 
-void Display::drawScreen(int8_t scr, bool bFirst)
+void Display::drawTile(int8_t nTile, bool bFirst)
 {
-  Screen& pScreen = m_screen[scr];
+  Tile& pTile = m_tile[nTile];
 
-  if(pScreen.pBGImage)
-    sprite.pushImage(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, pScreen.pBGImage);
+  if(pTile.pBGImage)
+    sprite.pushImage(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, pTile.pBGImage);
   else
     sprite.fillSprite(TFT_BLACK);
 
-  if(m_screen[m_currScreen].Extras & EX_TIME)
-    drawTime();    // time update every second
-
-  if(m_screen[m_currScreen].Extras & EX_RSSI)
-    updateRSSI();
-
-  if(pScreen.Extras & EX_CLOCK)
-    drawClock();
-
-  if(pScreen.Extras & EX_NOTIF)
-    drawNotifs(pScreen);
+  if(pTile.Extras & EX_NOTIF)
+    drawNotifs(pTile);
 
   sprite.setTextDatum(MC_DATUM);
   sprite.setFreeFont(&FreeSans9pt7b);
 
   uint8_t btnCnt;
-  for( btnCnt = 0; btnCnt < BUTTON_CNT && pScreen.button[btnCnt].ID; btnCnt++); // count buttons
+  for( btnCnt = 0; btnCnt < BUTTON_CNT && pTile.button[btnCnt].ID; btnCnt++); // count buttons
 
   if( btnCnt )
   {
     for(uint8_t btnIdx = 0; btnIdx < btnCnt; btnIdx++ )
-      drawButton( pScreen, &pScreen.button[ btnIdx ], false );
+      drawButton( pTile, &pTile.button[ btnIdx ], false );
   }
 
-  if(pScreen.szTitle[0])
+  if(pTile.Extras & EX_CLOCK) // draw clock over other objects
+    drawClock();
+
+  if(pTile.szTitle[0])
   {
     sprite.fillRect(0, 0, DISPLAY_WIDTH, 40, TFT_BLACK); // cover any scrolled buttons/text
     sprite.setTextColor(rgb16(16,63,0), TFT_BLACK );
-    sprite.drawString(pScreen.szTitle, DISPLAY_WIDTH/2, 27);
+    sprite.drawString(pTile.szTitle, DISPLAY_WIDTH/2, 27);
   }
 
-  if( pScreen.nSliderType )
-    drawSlider( pScreen.nSliderValue );
+  if( pTile.nSliderType )
+    drawSlider( pTile.nSliderValue );
 }
 
-void Display::drawButton(Screen& pScr, Button *pBtn, bool bPressed)
+void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed)
 {
+  if(pBtn->flags & BF_RSSI)
+  {
+    updateRSSI(pBtn);
+    return;
+  }
+  if(pBtn->flags & BF_TIME)
+  {
+    drawTime(pBtn);
+    return;
+  }
+  if(pBtn->flags & BF_DATE)
+  {
+    drawDate(pBtn);
+    return;
+  }
+  if(pBtn->flags & BF_DOW)
+  {
+    drawDOW(pBtn);
+    return;
+  }
+
+
   switch(pBtn->nFunction)
   {
     case BTF_Lights:
@@ -515,8 +538,8 @@ void Display::drawButton(Screen& pScr, Button *pBtn, bool bPressed)
 
   int16_t yOffset = pBtn->y;
   
-  if( !(pBtn->flags & BF_FIXED_Y) )
-    yOffset -= pScr.nScrollIndex;
+  if( !(pBtn->flags & BF_FIXED_POS) )
+    yOffset -= pTile.nScrollIndex;
 
   if(yOffset < 10 || yOffset >= DISPLAY_HEIGHT) // cut off anything out of bounds (top is covered by title blank)
     return;
@@ -635,27 +658,27 @@ void Display::notify(char *pszNote)
   m_nDispFreeze = millis() + 900; // pop the toast up for 900ms
 }
 
-void Display::drawNotifs(Screen& pScr)
+void Display::drawNotifs(Tile& pTile)
 {
   sprite.setTextDatum(TL_DATUM);
   sprite.setTextColor(TFT_WHITE, TFT_BLACK );
   sprite.setFreeFont(&FreeSans9pt7b);
 
-  const uint8_t x = 40;
-  int16_t y = -pScr.nScrollIndex; // offset by title
+  const uint8_t x = 40; // left padding
+  int16_t y = -pTile.nScrollIndex; // offset by title
 
   for(uint8_t i = 0; i < NOTE_CNT && m_pszNotifs[i]; i++)
   {
-    if(y > 30)
+    if(y > 30) // somewhat covered by title
       sprite.drawString(m_pszNotifs[i], x, y);
     y += sprite.fontHeight();
-    if(y > 204)
+    if(y > DISPLAY_HEIGHT + 4)
       break;
   }
 }
 
-// time and dow
-void Display::drawTime()
+// time
+void Display::drawTime(Button *pBtn)
 {
   if(year() < 2024) // don't display invalid time
     return;
@@ -675,15 +698,34 @@ void Display::drawTime()
 
   sprite.setTextColor(TFT_WHITE, TFT_BLACK );
   sprite.setFreeFont(&FreeSans9pt7b);
-  sprite.drawString(sTime, DISPLAY_WIDTH/2, 80);
+  sprite.drawString(sTime, pBtn->x, pBtn->y);
+}
 
-  sTime = monthShortStr(month());
+void Display::drawDate(Button *pBtn)
+{
+  if(year() < 2024) // don't display invalid time
+    return;
+
+  sprite.setTextColor(TFT_WHITE, TFT_BLACK );
+  sprite.setFreeFont(&FreeSans9pt7b);
+
+  String sTime = monthShortStr(month());
   sTime += " ";
   sTime += String(day());
-  sprite.drawString(sTime, DISPLAY_WIDTH/2, 156);
-
-  sprite.drawString(dayShortStr(weekday()), 178, 117);
+  sprite.drawString(sTime, pBtn->x, pBtn->y);
 }
+
+void Display::drawDOW(Button *pBtn)
+{
+  if(year() < 2024) // don't display invalid time
+    return;
+
+  sprite.setTextColor(TFT_WHITE, TFT_BLACK );
+  sprite.setFreeFont(&FreeSans9pt7b);
+
+  sprite.drawString(dayShortStr(weekday()), pBtn->x, pBtn->y);
+}
+
 
 // smooth adjust brigthness (0-255)
 void Display::dimmer()
@@ -724,7 +766,7 @@ void Display::drawSlider(uint8_t val)
   oldAng = ang;
 }
 
-void Display::updateRSSI()
+void Display::updateRSSI(Button *pBtn)
 {
 #define RSSI_CNT 8
   static int16_t rssi[RSSI_CNT];
@@ -739,16 +781,14 @@ void Display::updateRSSI()
 
   rssiAvg /= RSSI_CNT;
 
-  const uint8_t wh = 26; // width and height
-  const int16_t x = (DISPLAY_WIDTH/2 - wh/2); // X/Y position
+  const uint8_t wh = pBtn->w; // width and height
   const uint8_t sect = 127 / 5; //
   const uint8_t dist = wh  / 5; // distance between blocks
-  const uint8_t y = 180 + wh;
   int16_t sigStrength = 127 + rssiAvg;
 
   for (uint8_t i = 1; i < 6; i++)
   {
-    sprite.fillRect( x + i*dist, y - i*dist, dist-2, i*dist, (sigStrength > i * sect) ? TFT_CYAN : TFT_BLACK );
+    sprite.fillRect( pBtn->x + i*dist, pBtn->y - i*dist, dist-2, i*dist, (sigStrength > i * sect) ? TFT_CYAN : TFT_BLACK );
   }
 }
 
@@ -779,7 +819,7 @@ void Display::drawClock()
   cspoint(xS, yS, x, y, second() * 6, 94);
   cspoint(xS2, yS2, x, y, (second()+30) * 6, 24);
 
-  sprite.drawWedgeLine(x, y, xH, yH, 8, 2, TFT_LIGHTGREY, TFT_BLACK); // hour hand
+  sprite.drawWedgeLine(x, y, xH, yH, 8, 2, TFT_DARKGREY, TFT_BLACK); // hour hand
   sprite.drawWedgeLine(x, y, xM, yM, 5, 2, TFT_LIGHTGREY, TFT_BLACK); // minute hand
   sprite.fillCircle(x, y, 8, TFT_LIGHTGREY ); // center cap
   sprite.drawWideLine(xS2, yS2, xS, yS, 2.5, TFT_RED, TFT_BLACK ); // second hand
@@ -795,10 +835,10 @@ void Display::cspoint(uint16_t &x2, uint16_t &y2, uint16_t x, uint16_t y, float 
 void Display::setPcVolume(int8_t iValue)
 {
   uint8_t i;
-  for(i = 0; i < m_scrnCnt; i++)
-    if(m_screen[i].nSliderType == SL_PC)
+  for(i = 0; i < m_nTileCnt; i++)
+    if(m_tile[i].nSliderType == SL_PC)
       break;
-  m_screen[i].nSliderValue = iValue;
+  m_tile[i].nSliderValue = iValue;
 }
 
 void Display::RingIndicator(uint8_t n)
