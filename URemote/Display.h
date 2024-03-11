@@ -64,17 +64,19 @@ enum Button_Function
 };
 
 // Button flags
-#define BF_REPEAT  (1 << 0) // not yet implemented
-#define BF_STATE_2 (1 << 1)
-#define BF_FIXED_X (1 << 2) // not yet implemented
-#define BF_FIXED_Y (1 << 3)
+#define BF_INPUT   (1 << 0)
+#define BF_REPEAT  (1 << 1)
+#define BF_STATE_2 (1 << 2)
+#define BF_FIXED_POS (1 << 3) // not yet implemented
+#define BF_RSSI    (1 << 4)
+#define BF_TIME    (1 << 5)
+#define BF_DOW     (1 << 6)
+#define BF_DATE    (1 << 7)
 
-// Screen extras
-#define EX_RSSI   (1 << 0)
-#define EX_TIME   (1 << 1)
-#define EX_CLOCK  (1 << 2)
-#define EX_NOTIF  (1 << 3)
-#define EX_SCROLL (1 << 4)
+// Tile extras
+#define EX_CLOCK  (1 << 1)
+#define EX_NOTIF  (1 << 2)
+#define EX_SCROLL (1 << 3)
 
 enum slider_type
 {
@@ -87,10 +89,10 @@ enum slider_type
 struct Button
 {
   uint8_t ID;             // Don't set to 0
-  uint8_t flags;          // see BF_ flags
+  uint8_t row;            // Used with w to calculate x positions
+  uint16_t flags;          // see BF_ flags
   const char *pszText;    // Button text
   const unsigned short *pIcon[2]; // Normal, pressed icons
-  uint8_t row;            // Used with w to calculate x positions
   uint8_t w;              // calculated if 0
   uint8_t h;              // ""
   uint8_t nFunction;     // see enum Button_Function
@@ -99,7 +101,7 @@ struct Button
   int16_t y; // y can go over 240
 };
 
-struct Screen
+struct Tile
 {
   const char szTitle[16];   // Top text
   uint8_t nRow;
@@ -128,38 +130,43 @@ public:
   void RingIndicator(uint8_t n);
 
 private:
-  void drawScreen(int8_t scr, bool bFirst);
-  void scrollPage(uint8_t nScrn, int16_t nDelta);
-  void formatButtons(Screen& pScreen);
-  void drawButton(Screen& pScr, Button *pBtn, bool bPressed);
+  void drawTile(int8_t nTile, bool bFirst);
+  void scrollPage(uint8_t nTile, int16_t nDelta);
+  void formatButtons(Tile& pTile);
+  void drawButton(Tile& pTile, Button *pBtn, bool bPressed);
   void buttonCmd(Button *pBtn, bool bRepeat);
   void sliderCmd(uint8_t nType, uint8_t nOldVal, uint8_t nNewVal);
   void dimmer(void);
   void drawSlider(uint8_t val);
-  void updateRSSI(void);
-  void drawTime(void);
-  void drawNotifs(Screen& pScr);
+  void updateRSSI(Button *pBtn);
+  void drawTime(Button *pBtn);
+  void drawDate(Button *pBtn);
+  void drawDOW(Button *pBtn);
+  void drawNotifs(Tile& pTile);
   void drawClock(void);
   void cspoint(uint16_t &x2, uint16_t &y2, uint16_t x, uint16_t y, float angle, float size);
 
-#define SCREENS 9
-  Screen m_screen[SCREENS] =
+#define TILES 9
+  Tile m_tile[TILES] =
   {
-    // screen 0 (top/pull-down screen)
+    // tile 0 (top/pull-down tile)
     {
       "",
       0,
-      EX_RSSI | EX_CLOCK | EX_TIME,
+      EX_CLOCK,
       SL_None,
       0,
       0,
       0,
       0,//watchFace,
       {
-        {0}, // no buttons
+        { 1, 0, BF_RSSI|BF_FIXED_POS, "", {0},  26, 26, 0, {0}, (DISPLAY_WIDTH/2 - 26/2), 180 + 26},
+        { 2, 0, BF_TIME|BF_FIXED_POS, "", {0}, 100, 10, 0, {0}, DISPLAY_WIDTH/2, 80},
+        { 3, 0, BF_DATE|BF_FIXED_POS, "", {0}, 100, 10, 0, {0}, DISPLAY_WIDTH/2, 156},
+        { 4, 0, BF_DOW|BF_FIXED_POS, "",  {0},  50, 10, 0, {0}, 178, 117},
       }
     },
-    // screen 1 (left-most horizontal screen)
+    // tile 1 (left-most horizontal tile)
     {
       "Power",
       1,
@@ -169,16 +176,16 @@ private:
       0,
       0,
       NULL,
-      { // ID, F, text, icons, row, w, h, func, {addr, code}, x, y
-        { 1, 0, "TV",     {0}, 0, 48, 30, BTF_IR, {SAMSUNG, 0x707,230, 3}},
-        { 2, 0, "AMP",    {0}, 0, 48, 30, BTF_IR, {0, 0, 0x34}},
-        { 3, 0, "DVD",    {0}, 0, 48, 30, BTF_IR, {0, 0, 0x34}},
-        { 1, 0, "Light",  {0}, 1, 48, 30, BTF_Lights, {0}}, // LivingRoom ID = 1
-        { 2, 0, "Switch", {0}, 1, 48, 30, BTF_Lights, {0}}, // Other switch ID = 2
-        { 1, 0, "Learn",  {0}, 2, 48, 30, BTF_LearnIR, {0}},
+      {// ID, r,F, text,   icons, w, h, func, {addr, code}, x, y
+        { 1, 0, 0, "TV",     {0}, 48, 30, BTF_IR, {SAMSUNG, 0x707,230, 3}},
+        { 2, 0, 0, "AMP",    {0}, 48, 30, BTF_IR, {0, 0, 0x34}},
+        { 3, 0, 0, "DVD",    {0}, 48, 30, BTF_IR, {0, 0, 0x34}},
+        { 1, 1, 0, "Light",  {0}, 48, 30, BTF_Lights, {0}}, // LivingRoom ID = 1
+        { 2, 1, 0, "Switch", {0}, 48, 30, BTF_Lights, {0}}, // Other switch ID = 2
+        { 1, 2, 0, "Learn",  {0}, 48, 30, BTF_LearnIR, {0}},
       },
     },
-    // screen 2
+    // tile 2
     {
       "TV",
       2,
@@ -189,25 +196,25 @@ private:
       0,
       NULL,
       {
-        { 1, 0, "1", {0}, 0, 48, 32, BTF_IR, {SAMSUNG,0x707,4, 3}},
-        { 2, 0, "2", {0}, 0, 48, 32, BTF_IR, {SAMSUNG,0x707,5,3}},
-        { 3, 0, "3", {0}, 0, 48, 32, BTF_IR, {SAMSUNG,0x707,6,3}},
-        {13, BF_REPEAT, NULL,   {i_up, 0}, 0, 32, 32, BTF_IR, {SAMSUNG, 0x707,16, 3}},
-        { 4, 0, "4", {0}, 1, 48, 32, BTF_IR, {SAMSUNG,0x707,8,3}},
-        { 5, 0, "5", {0}, 1, 48, 32, BTF_IR, {SAMSUNG,0x707,9,3}},
-        { 6, 0, "6", {0}, 1, 48, 32, BTF_IR, {SAMSUNG,0x707,10,3}},
-        {14, BF_REPEAT, NULL,   {i_dn, 0}, 1, 32, 32, BTF_IR, {SAMSUNG, 0x707,18,3}},
-        { 7, 0, "7", {0}, 2, 48, 32, BTF_IR, {SAMSUNG,0x707,11,3}},
-        { 8, 0, "8", {0}, 2, 48, 32, BTF_IR, {SAMSUNG,0x707,12,3}},
-        { 9, 0, "9", {0}, 2, 48, 32, BTF_IR, {SAMSUNG,0x707,13,3}},
-        {15, BF_REPEAT, NULL,   {i_up, 0}, 2, 32, 32, BTF_IR, {SAMSUNG, 0x707,0x61,3}},
-        {11, 0, "H", {0}, 3, 48, 32, BTF_IR, {SAMSUNG,0x707,0x79,3}},
-        {10, 0, "0", {0}, 3, 48, 32, BTF_IR, {SAMSUNG,0x707,0x11,3}},
-        {12, 0, "<", {0}, 3, 48, 32, BTF_IR, {SAMSUNG,0x707,0x13,3}},
-        {16, BF_REPEAT, NULL,   {i_dn, 0}, 3, 32, 32, BTF_IR, {SAMSUNG, 0x707,11,3}},
+        { 1, 0, 0, "1", {0}, 48, 32, BTF_IR, {SAMSUNG,0x707,4, 3}},
+        { 2, 0, 0, "2", {0}, 48, 32, BTF_IR, {SAMSUNG,0x707,5,3}},
+        { 3, 0, 0, "3", {0}, 48, 32, BTF_IR, {SAMSUNG,0x707,6,3}},
+        {13, 0, BF_REPEAT, NULL, {i_up, 0}, 32, 32, BTF_IR, {SAMSUNG, 0x707,16, 3}},
+        { 4, 1, 0, "4", {0}, 48, 32, BTF_IR, {SAMSUNG,0x707,8,3}},
+        { 5, 1, 0, "5", {0}, 48, 32, BTF_IR, {SAMSUNG,0x707,9,3}},
+        { 6, 1, 0, "6", {0}, 48, 32, BTF_IR, {SAMSUNG,0x707,10,3}},
+        {14, 1, BF_REPEAT, NULL, {i_dn, 0}, 32, 32, BTF_IR, {SAMSUNG, 0x707,18,3}},
+        { 7, 2, 0, "7", {0}, 48, 32, BTF_IR, {SAMSUNG,0x707,11,3}},
+        { 8, 2, 0, "8", {0}, 48, 32, BTF_IR, {SAMSUNG,0x707,12,3}},
+        { 9, 2, 0, "9", {0}, 48, 32, BTF_IR, {SAMSUNG,0x707,13,3}},
+        {15, 2, BF_REPEAT, NULL, {i_up, 0}, 32, 32, BTF_IR, {SAMSUNG, 0x707,0x61,3}},
+        {11, 3, 0, "H", {0}, 48, 32, BTF_IR, {SAMSUNG,0x707,0x79,3}},
+        {10, 3, 0, "0", {0}, 48, 32, BTF_IR, {SAMSUNG,0x707,0x11,3}},
+        {12, 3, 0, "<", {0}, 48, 32, BTF_IR, {SAMSUNG,0x707,0x13,3}},
+        {16, 3, BF_REPEAT, NULL, {i_dn, 0}, 32, 32, BTF_IR, {SAMSUNG, 0x707,11,3}},
       }
     },
-    // screen
+    //
     {
       "PC",
       2,
@@ -218,16 +225,16 @@ private:
       0,
       NULL,
       {
-        {1, BF_REPEAT, NULL,   {i_lt, 0}, 0, 32, 32, BTF_PC_Media, {3,0}},
-        {2, 0,        "Play",  {0}, 0, 60, 32, BTF_PC_Media, {0,0}},
-        {3, BF_REPEAT, NULL,   {i_rt, 0}, 0, 32, 32, BTF_PC_Media, {2,0}},
-        {4, 0,         "STOP",  {0}, 1, 60, 32, BTF_PC_Media, {1,0}},
-        {5, BF_REPEAT, "Vol Up",{0}, 2, 60, 32, BTF_PC_Media, {5,0}},
-        {6, 0,         "Mute",  {0}, 2, 60, 32, BTF_PC_Media, {4,0}},
-        {7, BF_REPEAT, "Vol Dn",{0}, 2, 60, 32, BTF_PC_Media, {6,0}},
+        {1, 0, BF_REPEAT, NULL,   {i_lt, 0}, 32, 32, BTF_PC_Media, {3,0}},
+        {2, 0, 0,        "Play",  {0}, 60, 32, BTF_PC_Media, {0,0}},
+        {3, 0, BF_REPEAT, NULL,   {i_rt, 0}, 32, 32, BTF_PC_Media, {2,0}},
+        {4, 1, 0,         "STOP",  {0}, 60, 32, BTF_PC_Media, {1,0}},
+        {5, 2, BF_REPEAT, "Vol Up",{0}, 60, 32, BTF_PC_Media, {5,0}},
+        {6, 2, 0,         "Mute",  {0}, 60, 32, BTF_PC_Media, {4,0}},
+        {7, 2, BF_REPEAT, "Vol Dn",{0}, 60, 32, BTF_PC_Media, {6,0}},
       }
     },
-    // screen
+    //
     {
       "Lights",
       2,
@@ -238,10 +245,10 @@ private:
       0,
       NULL,
       {
-        { 1, 0, "LivingRoom", {0},  0,  110, 28, BTF_Lights, {0}},
+        { 1, 0, 0, "LivingRoom", {0}, 110, 28, BTF_Lights, {0}},
       }
     },
-    // Screen
+    //
     {
       "Thermostat",
       3,
@@ -252,11 +259,11 @@ private:
       0,
       NULL,
       {
-        {1, 0, NULL, {i_up, 0},  0, 32, 32, BTF_Stat, {0}},
-        {2, 0, NULL, {i_dn, 0},  1,  32, 32, BTF_Stat, {0}},
+        {1, 0, 0, NULL, {i_up, 0}, 32, 32, BTF_Stat, {0}},
+        {2, 1, 0, NULL, {i_dn, 0}, 32, 32, BTF_Stat, {0}},
       }
     },
-    // Screen
+    //
     {
       "Thermostat 2",
       3,
@@ -267,26 +274,27 @@ private:
       0,
       NULL,
       {
-        {1, 0, NULL, {i_up, 0},  0, 32, 32, BTF_Stat, {0}},
-        {2, 0, NULL, {i_dn, 0},  1,  32, 32, BTF_Stat, {0}},
+        {1, 0, 0, NULL, {i_up, 0}, 32, 32, BTF_Stat, {0}},
+        {2, 1, 0, NULL, {i_dn, 0}, 32, 32, BTF_Stat, {0}},
       }
     },
-    // Pull-up screen (last)
+    // Pull-up tile (last)
     {
       "Settings",
       4,
-      EX_RSSI,
+      0,
       SL_None,
       0,
       0,
       0,
       NULL,
       {
-        {1, 0, "WiFi On",      {0},  0,  112, 28, BTF_WIFI_ONOFF, {0}},
-        {2, 0, "Bluetooth On", {0},  1,  112, 28, BTF_BT_ONOFF, {0}},
+        {1, 0, 0, "WiFi On",      {0},  112, 28, BTF_WIFI_ONOFF, {0}},
+        {2, 1, 0, "Bluetooth On", {0},  112, 28, BTF_BT_ONOFF, {0}},
+        {3, 1, BF_RSSI|BF_FIXED_POS, "", {0}, 26, 26, 0, {0}, (DISPLAY_WIDTH/2 - 26/2), 180 + 26},
       }
     },
-    // Notification screen (very last)
+    // Notification tile (very last)
     {
       "Notifications",
       5,
@@ -297,19 +305,19 @@ private:
       0,
       NULL,
       {
-        {1, BF_FIXED_Y, "Clear", {0}, 0,  180, 24, BTF_Clear, {0}, 0, 240-24}, // force y
+        {1, 0, BF_FIXED_POS, "Clear", {0}, 180, 24, BTF_Clear, {0}, 0, 240-24}, // force y
       }
     },
   };
 
   uint16_t m_backlightTimer = DISPLAY_TIMEOUT; // backlight timer, seconds
   uint8_t m_bright = 0; // current brightness
-  uint8_t m_scrnCnt;
-  int8_t m_currScreen = 0; // start screen
+  uint8_t m_nTileCnt;
+  int8_t m_nCurrTile = 0; // start screen
   uint32_t m_nDispFreeze;
   uint8_t m_blSurgeTimer; // timer to stop shutoff
-  uint8_t m_nRowStart[SCREENS]; // index of screen at row
-  uint8_t m_nColCnt[SCREENS]; // column count for each row of screens
+  uint8_t m_nRowStart[TILES]; // index of screen at row
+  uint8_t m_nColCnt[TILES]; // column count for each row of screens
 #define NOTE_CNT 10
   char *m_pszNotifs[NOTE_CNT + 1];
 
