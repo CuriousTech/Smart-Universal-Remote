@@ -1,7 +1,7 @@
 # Smart-Universal-Remote
 Smart Universal Remote using ESP32-2424S012  
   
-Note: this project will soon be using the [Waveshare ESP32-S3-LCD-1.28](http://www.waveshare.com/wiki/ESP32-S3-LCD-1.28)  
+Note: this project will soon be using the [Waveshare ESP32-S3-Touch-LCD-1.28](https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-1.28) (corrected).  If I can find it.  
 
 This is a work in progress and not all code is complete. That said, it functionally works.  
   
