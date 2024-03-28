@@ -798,13 +798,25 @@ void Display::drawDOW(Button *pBtn)
 
 void Display::drawVolts(Button *pBtn)
 {
-  sprite.setTextColor(TFT_WHITE, TFT_BLACK );
-  sprite.setFreeFont(&FreeSans9pt7b);
-
+  static uint16_t lastV;
+  static bool bCharging;
   uint16_t v = analogRead(BATTV);
+
   float fV = 3.3 / (1<<12) * 3 * v;
 
-  sprite.drawString(String(fV, 1)+"V", pBtn->x, pBtn->y);
+  if(lastV > v + 150) // charging usually jumps about 300+
+    bCharging = true;
+  else if(lastV < v - 150)
+    bCharging = false;
+
+  lastV = v;
+
+  uint16_t color = (bCharging) ? TFT_RED:TFT_WHITE;
+  if(v < 1283) color = TFT_RED; // 1283 = 3.10V
+
+  sprite.setTextColor(color, TFT_BLACK );
+  sprite.setFreeFont(&FreeSans9pt7b);
+  sprite.drawString(String(fV, 2)+"V", pBtn->x, pBtn->y);
 }
 
 void Display::drawBattPerc(Button *pBtn)
@@ -859,7 +871,7 @@ void Display::drawSlider(uint8_t val)
   // draw slider bar  ( x,              y,          rad, inner rad, startAngle, endAngle, fg_color, bg_color, roundEnds)
   sprite.drawSmoothArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 111, 106, 360-135-15, 360-45+15, TFT_DARKCYAN, TFT_BLACK, true);
 
-  uint8_t angle = 30 + (val * 240 / 100);
+  uint8_t angle = 30 + (val * 120 / 100);
   float deg =  M_PI * angle / 180;
   ax = (DISPLAY_WIDTH/2) + dist * sin(deg);
   ay = (DISPLAY_HEIGHT/2) + dist * cos(deg);
