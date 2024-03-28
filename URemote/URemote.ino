@@ -57,8 +57,10 @@ JsonParse jsonParse(jsonCallback);
 BleKeyboard bleKeyboard;
 #endif
 
-#define IR_RECEIVE_PIN   20 // RXD0
-#define IR_SEND_PIN      21 // TXD0
+// GPIO 15-18 reserved for keypad
+
+#define IR_RECEIVE_PIN   21
+#define IR_SEND_PIN      33
 //#define DISABLE_CODE_FOR_RECEIVER // Disables restarting receiver after each send. Saves 450 bytes program memory and 269 bytes RAM if receiving functions are not used.
 #define EXCLUDE_EXOTIC_PROTOCOLS  // Saves around 240 bytes program memory if IrSender.write is used
 //#define SEND_PWM_BY_TIMER         // Disable carrier PWM generation in software and use (restricted) hardware PWM.
@@ -183,12 +185,25 @@ void startWiFi()
   ArduinoOTA.onStart([]() {
     ee.update();
 #ifdef SERVER_ENABLE
-  jsonString js("print");
-  js.Var("text", "OTA update started");
-  ws.textAll(js.Close());
+//    jsonString js("print");
+//    js.Var("text", "OTA update started");
+//    ws.textAll(js.Close());
 #endif
-  delay(100);
+    delay(100);
   });
+
+   //This callback will be called when OTA encountered Error
+  ArduinoOTA.onError([](ota_error_t n) {
+#ifdef SERVER_ENABLE
+    jsonString js("print");
+    js.Var("text", n);
+    ws.textAll(js.Close());
+#endif
+  });
+
+    //This callback will be called when OTA is receiving data
+//    void onProgress(THandlerFunction_Progress fn);
+
 #endif
 }
 
@@ -299,6 +314,7 @@ const char *jsonListCmd[] = {
   "RX",
   "PC_REMOTE", // PC commands client
   "VOLUME",
+  "LED", // 7
   NULL
 };
 
@@ -333,7 +349,10 @@ void jsonCallback(int16_t iName, int iValue, char *psValue)
       display.notify("PC Connected");
       break;
     case 6: // VOLUME
-      display.setPcVolume(iValue);
+      display.setPcVolumeSlider(iValue);
+      break;
+    case 7: // LED
+      digitalWrite(IR_SEND_PIN, iValue ? HIGH:LOW);
       break;
   }
 }
@@ -399,7 +418,7 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
 
 void setup()
 {
-//  ets_printf("Starting\n"); // print over USB
+  ets_printf("Starting\n"); // print over USB
   display.init();
   startWiFi();
   if(ee.bBtEnabled == false)
