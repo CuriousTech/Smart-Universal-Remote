@@ -6,29 +6,36 @@ Display and UI code
 #include "display.h"
 #include <TimeLib.h>
 #include "eeMem.h"
-#include <TFT_eSPI.h> // TFT_espi library from library manager?
-#include "CST816D.h"
+#include <TFT_eSPI.h> // TFT_eSPI library from library manager?
+#include "CST816T.h"
 #include "Lights.h"
+#include <FunctionalInterrupt.h>
+#include <math.h>
+
+#include "QMI8658.h"
 
 TFT_eSPI tft = TFT_eSPI();
 TFT_eSprite sprite = TFT_eSprite(&tft);
+TFT_eSprite sprite2 = TFT_eSprite(&tft);
+
+QMI8658 qmi;
+
 extern Lights lights;
 extern void sendIR(uint16_t *pCode);
 extern bool sendBLE(uint16_t *pCode);
-
 extern bool sendPCMediaCmd( uint16_t *pCode);
-
 extern void consolePrint(String s); // for browser debug
 
-#define I2C_SDA 4
-#define I2C_SCL 5
-#define TP_INT 0
-#define TP_RST 1
-#define TFT_BL 3
-#define EXT_IO 8 // Pad by serial port (ignored unless strapping)
-#define BOOT   9 // rear button (strapping, 10K pullup + internal pullup)
+#define I2C_SDA   6
+#define I2C_SCL   7
+#define IMU_INT1  4
+#define IMU_INT2  3
+#define TP_RST   13
+#define TP_INT    5
+#define TFT_BL    2
+#define BATTV     1
 
-CST816D touch(I2C_SDA, I2C_SCL, TP_RST, TP_INT);
+CST816T touch(I2C_SDA, I2C_SCL, TP_RST, TP_INT);
 
 #include "screensavers.h" // comment this line to remove screensavers (saves 3172b PROGMEM, 1072b SRAM)
 #ifdef SCREENSAVERS_H
@@ -42,29 +49,38 @@ void Display::init(void)
 {
   pinMode(TFT_BL, OUTPUT);
 
-  touch.begin();
   tft.init();
   tft.setSwapBytes(true);
   tft.setTextPadding(8); 
 
   sprite.createSprite(DISPLAY_WIDTH, DISPLAY_HEIGHT); // This uses over 115K RAM
   sprite.setSwapBytes(true);
-
-  pinMode(TP_INT, INPUT);
+  sprite2.createSprite(DISPLAY_WIDTH, DISPLAY_HEIGHT); // This uses over 115K RAM
+  sprite2.setSwapBytes(true);
 
   // count tiles, index rows, count columns, format the buttons
   uint8_t nRowIdx = 0;
 
-  for(m_nTileCnt = 1; m_nTileCnt < TILES && (m_tile[m_nTileCnt].Extras || m_tile[m_nTileCnt].szTitle[0] || m_tile[m_nTileCnt].pBGImage); m_nTileCnt++) // count screens
+  for(m_nTileCnt = 0; m_nTileCnt < TILES && (m_tile[m_nTileCnt].Extras || m_tile[m_nTileCnt].szTitle[0] || m_tile[m_nTileCnt].pBGImage); m_nTileCnt++) // count screens
   {
-    m_nColCnt[nRowIdx]++;
     if(m_tile[m_nTileCnt].nRow != nRowIdx)
       m_nRowStart[++nRowIdx] = m_nTileCnt;
+    m_nColCnt[nRowIdx]++;
     formatButtons(m_tile[m_nTileCnt]);
   }
 
   drawTile(m_nCurrTile, true);
   sprite.pushSprite(0, 0); // draw screen 0 on start
+
+  qmi.init();
+  qmi.enableSensors(7);
+
+  pinMode(IMU_INT1, INPUT_PULLUP);
+  pinMode(IMU_INT2, INPUT_PULLUP);
+  attachInterrupt(IMU_INT1, std::bind(&Display::handleISR1, this), FALLING);
+  attachInterrupt(IMU_INT2, std::bind(&Display::handleISR2, this), FALLING);
+
+  touch.begin();
 }
 
 void Display::exitScreensaver()
@@ -75,6 +91,8 @@ void Display::exitScreensaver()
   {
     drawTile(m_nCurrTile, true); // draw over screensaver
     sprite.pushSprite(0, 0);
+    qmi.setWakeOnMotion(false); // enable gyro/acc/temp
+
   }
   m_brightness = ee.brightLevel[1]; // increase brightness for any touch
 }
@@ -83,7 +101,6 @@ void Display::service(void)
 {
   static Button *pCurrBtn; // for button repeats and release
   static uint32_t lastms; // for button repeats
-  static bool bGestured;  // gesture detected
 
   dimmer();
 
@@ -98,84 +115,97 @@ void Display::service(void)
   if(m_brightness == ee.brightLevel[0]) // full dim activates screensaver
     ss.run();
 #endif
-  uint8_t gesture;
-  uint8_t nRowOffset;
+
   static bool bScrolling; // scrolling active
-  uint16_t touchX, touchY;
+  static bool bSliderHit;
   static int16_t touchXstart, touchYstart; // first touch pos for scolling and non-moving detect
-  static uint32_t touchStartMS; // timing for 
-  static uint8_t nCurrRow;
- 
-  if ( !touch.getTouch(&touchX, &touchY, &gesture) ) // no touch
-  {
-    if(pCurrBtn)
-    {
-      drawButton(m_tile[m_nCurrTile], pCurrBtn, false); // draw released button
-      sprite.pushSprite(0, 0);
-    }
-    pCurrBtn = NULL;
-    bGestured = false;
-    touchXstart = -1;
-    touchYstart = -1;
-    bScrolling = false;
-  }
-  else
-  {
-    m_backlightTimer = DISPLAY_TIMEOUT; // reset timer for any touch
-    Tile& pTile = m_tile[m_nCurrTile];
+  static uint32_t touchStartMS; // timing for detecting swipe vs press
 
-    if( m_brightness < ee.brightLevel[1] ) // ignore input until brightness is full
+  if(touch.available() )
+  {
+    if(touch.event == 1) // release
     {
-      exitScreensaver();
-      return;
-    }
-
-    // Handle slider
-    if(pTile.nSliderType && touchX > DISPLAY_WIDTH - 70 )
-    {
-      uint8_t val = (uint8_t)(float)(DISPLAY_HEIGHT - 40 - touchY) * 0.7;
-      if(val > 100) val = 100;
-      drawSlider(val);
-      sprite.pushSprite(0, 0);
-      if(pTile.nSliderValue != val)
+      if(!bSliderHit)
       {
-        sliderCmd(pTile.nSliderType, pTile.nSliderValue, val);
-        pTile.nSliderValue = val;
+        if((int16_t)touch.y - (int16_t)touchYstart > 14)
+          touch.gestureID = SWIPE_DOWN;
+        else if((int16_t)touch.y - (int16_t)touchYstart < -14)
+          touch.gestureID = SWIPE_UP;
+        else if((int16_t)touch.x - (int16_t)touchXstart > 14)
+          touch.gestureID = SWIPE_RIGHT;
+        else if((int16_t)touch.x - (int16_t)touchXstart < -14)
+          touch.gestureID = SWIPE_LEFT;
+      }
+
+      if(pCurrBtn)
+      {
+        drawButton(m_tile[m_nCurrTile], pCurrBtn, false); // draw released button
+        sprite.pushSprite(0, 0);
+        pCurrBtn = NULL;
+      }
+      else if(touch.gestureID)
+      {
+        swipeTile();
       }
     }
-    else if(bScrolling) // scrolling detected
+    else if(touch.event == 0) // initial touch
     {
-      if(touchY - touchYstart)
-        scrollPage(m_nCurrTile, touchY - touchYstart);
-      touchYstart = touchY;
+      touchXstart = touch.x;
+      touchYstart = touch.y;
+      touch.gestureID = 0;
+      bSliderHit = false;
+      bScrolling = false;
+      touchStartMS = millis();
+
+      m_backlightTimer = DISPLAY_TIMEOUT; // reset timer for any touch
+  
+      if( m_brightness < ee.brightLevel[1] )
+        exitScreensaver();
     }
-    else if(gesture == None || gesture == LongPress) // normal press or hold
+    else // 2=active
     {
-      if(touchYstart == -1) // first touch
+      if( m_brightness < ee.brightLevel[1] ) // ignore input until brightness is full
+        return;
+
+      Tile& pTile = m_tile[m_nCurrTile];
+
+      // Handle slider
+      uint8_t sliderVal;
+      if(pTile.nSliderType && sliderHit(sliderVal) )
       {
-        touchXstart = touchX;
-        touchYstart = touchY;
-        touchStartMS = millis();
-      }
-      else if(pCurrBtn == NULL)
-      {
-        if(millis() - touchStartMS < 100)
+        drawSlider(sliderVal);
+        sprite.pushSprite(0, 0);
+        if(pTile.nSliderValue != sliderVal)
         {
-          // first 90ms do nothing to detect any slide
+          sliderCmd(pTile.nSliderType, pTile.nSliderValue, sliderVal);
+          pTile.nSliderValue = sliderVal;
         }
-        else
+        bSliderHit = true;
+      }
+      else if(bScrolling) // scrolling detected
+      {
+        if(touch.y - touchYstart)
+          scrollPage(m_nCurrTile, touch.y - touchYstart);
+        touchYstart = touch.y;
+      }
+      else // normal press or hold
+      {
+        if(millis() - touchStartMS < 100 && touch.gestureID == 0) // delay a bit
         {
-          if(touchY - touchYstart || touchX - touchXstart) // movement, not a direct touch
-            return;
+
+        }
+        else if(pCurrBtn == NULL) // check button hit
+        {
           Button *pBtn = &pTile.button[0];
-          for(uint8_t i = 0; pBtn[i].x; i++) // check for press in button bounds
+          for(uint8_t i = 0; pBtn[i].x; i++) // check for press in button bounds without slide
           {
             int16_t y = pBtn[i].y;
 
             if( !(pBtn->flags & BF_FIXED_POS) ) // adjust for scroll offset
               y -= pTile.nScrollIndex;
   
-            if (touchX >= pBtn[i].x && touchX <= pBtn[i].x + pBtn[i].w && touchY >= y && touchY <= y + pBtn[i].h)
+            if ( (touch.x >= pBtn[i].x && touch.x <= pBtn[i].x + pBtn[i].w && touch.y >= y && touch.y <= y + pBtn[i].h)
+               && (touchXstart >= pBtn[i].x && touchXstart <= pBtn[i].x + pBtn[i].w && touchYstart >= y && touchYstart <= y + pBtn[i].h) ) // make sure not swiping
             {
               pCurrBtn = &pBtn[i];
               drawButton(pTile, pCurrBtn, true); // draw pressed state
@@ -186,88 +216,23 @@ void Display::service(void)
             }
           }
         }
-      }
-      else if(millis() - lastms > 300) // repeat speed
-      {
-        if(pCurrBtn->flags & BF_REPEAT)
-          buttonCmd(pCurrBtn, true);
-        lastms = millis();
+        else if(millis() - lastms > 300) // repeat speed
+        {
+          if(pCurrBtn && (pCurrBtn->flags & BF_REPEAT) )
+            buttonCmd(pCurrBtn, true);
+          lastms = millis();
+        }
+
+        if((pTile.Extras & EX_SCROLL) )
+        {
+          if( touchYstart > 40 && touchYstart < DISPLAY_HEIGHT - 40 && touch.y != touchYstart && (touch.y - touchYstart < 10 || touchYstart - touch.y < 10)) // slow/short flick
+          {
+            if( touchXstart > 40 && touchXstart < DISPLAY_WIDTH - 40) // start needs to be in the middle somewhere
+              bScrolling = true;
+          }
+        }
       }
     }
-    else if(bGestured == false && gesture) // slide gestures
-    {
-      switch(gesture)
-      {
-        case SlideRight:
-          if(pCurrBtn || m_nCurrTile <= 0) // don't screoll if button pressed or screen 0
-            break;
-
-          if(m_tile[m_nCurrTile].nRow != m_tile[m_nCurrTile-1].nRow) // don't scroll left if leftmost
-            break;
-
-          m_nCurrTile--;
-          drawTile(m_nCurrTile, true);
-          for(int16_t i = -DISPLAY_WIDTH; i <= 0; i += 8)
-            sprite.pushSprite(i, 0);
-          break;
-        case SlideLeft:
-          if(pCurrBtn || m_nCurrTile >= m_nTileCnt - 1) // don't scroll if button pressed or last screen
-            break;
-
-          if(m_tile[m_nCurrTile].nRow != m_tile[m_nCurrTile+1].nRow) // don't scroll right if rightmost
-            break;
-
-          m_nCurrTile++;
-          drawTile(m_nCurrTile, true);
-          for(int16_t i = DISPLAY_WIDTH; i >= 0; i -= 8)
-            sprite.pushSprite(i, 0);
-          break;
-        case SlideDown:
-          if((pTile.Extras & EX_SCROLL) && touchY - touchYstart < 20) // slow/short flick
-          {
-            bScrolling = true;
-            break;
-          }
-
-          if(pCurrBtn || m_nCurrTile == 0 || nCurrRow == 0) // don't slide up from top
-            break;
-
-          nRowOffset = m_nCurrTile - m_nRowStart[nCurrRow];
-          nCurrRow--;
-          m_nCurrTile = m_nRowStart[nCurrRow] + min((int)nRowOffset, m_nColCnt[nCurrRow]-1 ); // get close to the adjacent screen
-
-          drawTile(m_nCurrTile, true);
-          for(int16_t i = -DISPLAY_HEIGHT; i <= 0; i += 8)
-            sprite.pushSprite(0, i);
-          break;
-        case SlideUp:
-          if((pTile.Extras & EX_SCROLL) && touchYstart - touchY < 20) // slow/short flick
-          {
-            bScrolling = true;
-            break;
-          }
-
-          if(pCurrBtn) // don't slide if button pressed
-            break;
-
-          nRowOffset = m_nCurrTile - m_nRowStart[nCurrRow];
-          nCurrRow++;
-          { // fix
-            uint8_t nCS = m_nRowStart[nCurrRow] + min((int)nRowOffset, m_nColCnt[nCurrRow]-1 );
-            if(nCS < m_nTileCnt) m_nCurrTile = nCS;
-            else{ nCurrRow--; break;}// back out
-          }
-          drawTile(m_nCurrTile, true);
-          for(int16_t i = DISPLAY_HEIGHT; i >= 0; i -= 8)
-            sprite.pushSprite(0, i);
-          break;
-        default:
-          break;
-      }
-      if(gesture <= SlideRight)
-        bGestured = true;
-    }
-
   }
 
   if(year() < 2024 || WiFi.status() != WL_CONNECTED) // Do a connecting effect
@@ -280,6 +245,110 @@ void Display::service(void)
     ang[1] %= 360;
     tft.drawSmoothArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 119, 116, ang[0], ang[1], (WiFi.status() == WL_CONNECTED) ? TFT_GREEN:TFT_RED, TFT_BLACK, false);
   }
+
+  if( m_int1Triggered) // may be used later
+  {
+    m_int1Triggered = false;
+    ets_printf("INT1\n");
+  }
+
+  if( m_int2Triggered) // set for IMU WOM
+  {
+//    ets_printf("INT2\n");
+    m_int2Triggered = false;
+    if( m_brightness < ee.brightLevel[1] )
+      exitScreensaver();
+  }
+}
+
+// swipe effects
+void Display::swipeTile()
+{
+  static uint8_t nCurrRow;
+  uint8_t nRowOffset;
+
+  switch(touch.gestureID)
+  {
+    case SWIPE_RIGHT:
+      if(m_nCurrTile <= 0) // don't screoll if button pressed or screen 0
+        break;
+  
+      if(m_tile[m_nCurrTile].nRow != m_tile[m_nCurrTile-1].nRow) // don't scroll left if leftmost
+        break;
+  
+      sprite.pushToSprite(&sprite2, 0, 0); // copy to temp sprite
+
+      m_nCurrTile--;
+      drawTile(m_nCurrTile, true);
+      for(int16_t i = -DISPLAY_WIDTH; i <= 0; i += 8)
+      {
+         // Push a windowed area of the sprite to the TFT at tx, ty
+        //  bool     pushSprite(int32_t tx, int32_t ty, int32_t sx, int32_t sy, int32_t sw, int32_t sh);
+        
+        sprite2.pushSprite(i + DISPLAY_WIDTH, 0);
+        sprite.pushSprite(i, 0);
+      }
+      break;
+    case SWIPE_LEFT:
+      if(m_nCurrTile >= m_nTileCnt - 1) // don't scroll if button pressed or last screen
+        break;
+  
+      if(m_tile[m_nCurrTile].nRow != m_tile[m_nCurrTile+1].nRow) // don't scroll right if rightmost
+        break;
+  
+      sprite.pushToSprite(&sprite2, 0, 0); // copy to temp sprite
+
+      m_nCurrTile++;
+      drawTile(m_nCurrTile, true);
+      for(int16_t i = DISPLAY_WIDTH; i >= 0; i -= 8)
+      {
+        sprite2.pushSprite(i - DISPLAY_WIDTH, 0);
+        sprite.pushSprite(i, 0);
+      }
+      break;
+    case SWIPE_DOWN:
+      if(m_nCurrTile == 0 || nCurrRow == 0) // don't slide up from top
+        break;
+  
+      nRowOffset = m_nCurrTile - m_nRowStart[nCurrRow];
+      nCurrRow--;
+      m_nCurrTile = m_nRowStart[nCurrRow] + min((int)nRowOffset, m_nColCnt[nCurrRow]-1 ); // get close to the adjacent screen
+
+      sprite.pushToSprite(&sprite2, 0, 0); // copy to temp sprite
+
+      drawTile(m_nCurrTile, true);
+      for(int16_t i = -DISPLAY_HEIGHT; i <= 0; i += 8)
+      {
+        sprite2.pushSprite(0, i + DISPLAY_HEIGHT);
+        sprite.pushSprite(0, i);
+      }
+      break;
+    case SWIPE_UP:
+      nRowOffset = m_nCurrTile - m_nRowStart[nCurrRow];
+      nCurrRow++;
+      { // fix
+        uint8_t nCS = m_nRowStart[nCurrRow] + min((int)nRowOffset, m_nColCnt[nCurrRow]-1 );
+        if(nCS < m_nTileCnt) m_nCurrTile = nCS;
+        else{ nCurrRow--; break;}// back out
+      }
+      sprite.pushToSprite(&sprite2, 0, 0); // copy to temp sprite
+      drawTile(m_nCurrTile, true);
+      for(int16_t i = DISPLAY_HEIGHT; i >= 0; i -= 8)
+      {
+        sprite2.pushSprite(0, 0, 0, DISPLAY_HEIGHT - i, DISPLAY_WIDTH, i);
+        sprite.pushSprite(0, i, 0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT - i);
+      }
+      break;
+  }
+}
+
+void IRAM_ATTR Display::handleISR1(void)
+{
+  m_int1Triggered = true;
+}
+void IRAM_ATTR Display::handleISR2(void)
+{
+  m_int2Triggered = true;
 }
 
 // called each second
@@ -293,10 +362,11 @@ void Display::oneSec()
     if(--m_backlightTimer == 0)
     {
       m_brightness = ee.brightLevel[0]; // dim level
-      m_blSurgeTimer = 0;
 #ifdef SCREENSAVERS_H
       ss.select( random(0, SS_Count) );
 #endif
+      qmi.setWakeOnMotion(true); // enable movement to wake
+      m_int2Triggered = false; // causes an interrupt
     }
   }
 
@@ -304,17 +374,6 @@ void Display::oneSec()
   {
     drawTile(m_nCurrTile, false);
     sprite.pushSprite(0,0);
-  }
-
-  // Reset the IP5306 shutdown timer when dim / consuming <45mA
-  if(m_bright == ee.brightLevel[0])
-  {
-    if(++m_blSurgeTimer > 30)
-    {
-      m_bright = ee.brightLevel[1]; // increase brightness for a surge
-      analogWrite(TFT_BL, 200);
-      m_blSurgeTimer = 0;
-    }
   }
 
   static bool bQDone = false;
@@ -348,8 +407,16 @@ void Display::oneSec()
       formatButtons(pTile);
     }
   }
+/*
+  float acc[3], gyro[3];
+
+  qmi.read_acc_xyz(acc);
+  qmi.read_gyro_xyz(gyro);
+  ets_printf("acc %d %d %d  gyro %d %d %d\n", (int)acc[0], (int)acc[1], (int)acc[2], (int)gyro[0], (int)gyro[1], (int)gyro[2]);
+*/
 }
 
+// scrolling oversized tiles and notification list
 void Display::scrollPage(uint8_t nTile, int16_t nDelta)
 {
   Tile& pTile = m_tile[nTile];
@@ -380,6 +447,7 @@ void Display::scrollPage(uint8_t nTile, int16_t nDelta)
   sprite.pushSprite(0,0);
 }
 
+// calculate positions of non-fixed buttons
 void Display::formatButtons(Tile& pTile)
 {
   sprite.setTextDatum(MC_DATUM); // center text on button
@@ -495,30 +563,29 @@ void Display::drawTile(int8_t nTile, bool bFirst)
 
 void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed)
 {
-  if(pBtn->flags & BF_RSSI)
-  {
-    updateRSSI(pBtn);
-    return;
-  }
-  if(pBtn->flags & BF_TIME)
-  {
-    drawTime(pBtn);
-    return;
-  }
-  if(pBtn->flags & BF_DATE)
-  {
-    drawDate(pBtn);
-    return;
-  }
-  if(pBtn->flags & BF_DOW)
-  {
-    drawDOW(pBtn);
-    return;
-  }
-
-
   switch(pBtn->nFunction)
   {
+    case BTF_RSSI:
+      updateRSSI(pBtn);
+      return;
+    case BTF_Time:
+      drawTime(pBtn);
+      return;
+    case BTF_Date:
+      drawDate(pBtn);
+      return;
+    case BTF_DOW:
+      drawDOW(pBtn);
+      return;
+    case BTF_Volts:
+      drawVolts(pBtn);
+      return;
+    case BTF_BattPerc:
+      drawBattPerc(pBtn);
+      return;
+    case BTF_Temp:
+      drawTemp(pBtn);
+      return;
     case BTF_Lights:
       if(lights.getSwitch(pBtn->ID)) // light is on
         pBtn->flags |= BF_STATE_2;
@@ -538,7 +605,7 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed)
 
   int16_t yOffset = pBtn->y;
   
-  if( !(pBtn->flags & BF_FIXED_POS) )
+  if( !(pBtn->flags & BF_FIXED_POS) ) // don't scroll fixed pos buttons
     yOffset -= pTile.nScrollIndex;
 
   if(yOffset < 10 || yOffset >= DISPLAY_HEIGHT) // cut off anything out of bounds (top is covered by title blank)
@@ -554,6 +621,7 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed)
     sprite.drawString( pBtn->pszText, pBtn->x + (pBtn->w / 2), yOffset + (pBtn->h / 2) - 2 );
 }
 
+// called when button is activated
 void Display::buttonCmd(Button *pBtn, bool bRepeat)
 {
   switch(pBtn->nFunction)
@@ -625,10 +693,10 @@ void Display::sliderCmd(uint8_t nType, uint8_t nOldVal, uint8_t nNewVal)
 
   switch( nType)
   {
-    case SL_Lights:
+    case SL_Lights: // light dimmer (-1 = last activa)
       lights.setSwitch( -1, true, nNewVal);
       break;
-    case SL_PC:
+    case SL_PC: // PC volume
       code[0] = 1000;
       code[1] = nNewVal;
       sendPCMediaCmd(code);
@@ -636,6 +704,7 @@ void Display::sliderCmd(uint8_t nType, uint8_t nOldVal, uint8_t nNewVal)
   }
 }
 
+// Pop uup a notification + add to notes list
 void Display::notify(char *pszNote)
 {
   if( m_brightness < ee.brightLevel[1] ) // make it bright if not
@@ -658,6 +727,7 @@ void Display::notify(char *pszNote)
   m_nDispFreeze = millis() + 900; // pop the toast up for 900ms
 }
 
+// draw the notifs list
 void Display::drawNotifs(Tile& pTile)
 {
   sprite.setTextDatum(TL_DATUM);
@@ -665,7 +735,7 @@ void Display::drawNotifs(Tile& pTile)
   sprite.setFreeFont(&FreeSans9pt7b);
 
   const uint8_t x = 40; // left padding
-  int16_t y = -pTile.nScrollIndex; // offset by title
+  int16_t y = -pTile.nScrollIndex; // offset by the scroll pos
 
   for(uint8_t i = 0; i < NOTE_CNT && m_pszNotifs[i]; i++)
   {
@@ -726,6 +796,38 @@ void Display::drawDOW(Button *pBtn)
   sprite.drawString(dayShortStr(weekday()), pBtn->x, pBtn->y);
 }
 
+void Display::drawVolts(Button *pBtn)
+{
+  sprite.setTextColor(TFT_WHITE, TFT_BLACK );
+  sprite.setFreeFont(&FreeSans9pt7b);
+
+  uint16_t v = analogRead(BATTV);
+  float fV = 3.3 / (1<<12) * 3 * v;
+
+  sprite.drawString(String(fV, 1)+"V", pBtn->x, pBtn->y);
+}
+
+void Display::drawBattPerc(Button *pBtn)
+{
+  sprite.setTextColor(TFT_WHITE, TFT_BLACK );
+  sprite.setFreeFont(&FreeSans9pt7b);
+
+  uint16_t v = analogRead(BATTV);
+  float fV = 3.3 / (1<<12) * 3 * v;
+
+  float perc = (fV - 3.6) * 100 / (4.2-3.6); // Todo: The draw drops below 3.6 easily
+  if(perc < 0) perc = 0;
+  sprite.drawString(String(perc, 0), pBtn->x, pBtn->y);
+}
+
+void Display::drawTemp(Button *pBtn)
+{
+  sprite.setTextColor(TFT_WHITE, TFT_BLACK );
+  sprite.setFreeFont(&FreeSans9pt7b);
+
+  float fT = qmi.readTemp();// * 9/5 + 32;
+  sprite.drawString(String(fT, 1), pBtn->x, pBtn->y);
+}
 
 // smooth adjust brigthness (0-255)
 void Display::dimmer()
@@ -748,24 +850,41 @@ void Display::dimmer()
 
 void Display::drawSlider(uint8_t val)
 {
-  static float oldAng = 0;
+  static float oldDeg = 0;
   uint8_t dist = 107;
-  float ax = (DISPLAY_WIDTH/2) + dist * sin(oldAng);
-  float ay = (DISPLAY_HEIGHT/2) + dist * cos(oldAng);  
+  float ax = (DISPLAY_WIDTH/2) + dist * sin(oldDeg);
+  float ay = (DISPLAY_HEIGHT/2) + dist * cos(oldDeg);
   sprite.drawSpot(ax, ay, 11, TFT_BLACK); // remove old spot
 
-  //                  ( x,   y,  r,   ir,  startAngle, endAngle, fg_color, bg_color, roundEnds)
-  sprite.drawSmoothArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 111, 106, 180 + 28, 360- 28, TFT_DARKCYAN, TFT_BLACK, true);
+  // draw slider bar  ( x,              y,          rad, inner rad, startAngle, endAngle, fg_color, bg_color, roundEnds)
+  sprite.drawSmoothArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 111, 106, 360-135-15, 360-45+15, TFT_DARKCYAN, TFT_BLACK, true);
 
-  uint8_t angle = 30 + (val * (DISPLAY_WIDTH/2) / 100);
-  float ang =  M_PI * angle / 180;
-  ax = (DISPLAY_WIDTH/2) + dist * sin(ang);
-  ay = (DISPLAY_HEIGHT/2) + dist * cos(ang);
+  uint8_t angle = 30 + (val * 240 / 100);
+  float deg =  M_PI * angle / 180;
+  ax = (DISPLAY_WIDTH/2) + dist * sin(deg);
+  ay = (DISPLAY_HEIGHT/2) + dist * cos(deg);
 
   sprite.drawSpot(ax, ay, 10, TFT_YELLOW);
-  oldAng = ang;
+  oldDeg = deg;
 }
 
+// check for edge slider hit and return 0-100 value
+bool Display::sliderHit(uint8_t& value)
+{
+  uint8_t dist = sqrt( pow((float)DISPLAY_WIDTH/2 - touch.x, 2) + pow((float)(DISPLAY_HEIGHT/2) - touch.y, 2) );
+  if(dist < 110) // touch on edge
+    return false;
+
+  int16_t deg = atan2(touch.y - (DISPLAY_HEIGHT/2), touch.x - (DISPLAY_WIDTH/2)) * (180 / PI);
+  deg -= 45; // slider is 90 deg long from 45 to 135
+  deg = -deg * 100 / 90; // convert 90 degs from 135 to 45 to 100%
+  if(deg < 0 || deg > 100) // touch not over slider
+    return false;
+  value = deg;
+  return true;
+}
+
+// Draw RSSI bars
 void Display::updateRSSI(Button *pBtn)
 {
 #define RSSI_CNT 8
@@ -798,7 +917,7 @@ void Display::drawClock()
   const float x = DISPLAY_WIDTH/2; // center
   const float y = DISPLAY_HEIGHT/2;
 
-  sprite.drawSmoothCircle(x, y, x-2, TFT_WHITE, TFT_BLACK);
+  sprite.drawSmoothCircle(x, y, x-2, TFT_WHITE, TFT_BLACK); // erase BG
 
   for(uint16_t i = 0; i < 360; i += 6) // drawing the watchface instead of an image saves 9% of PROGMEM
   {
@@ -819,12 +938,13 @@ void Display::drawClock()
   cspoint(xS, yS, x, y, second() * 6, 94);
   cspoint(xS2, yS2, x, y, (second()+30) * 6, 24);
 
-  sprite.drawWedgeLine(x, y, xH, yH, 8, 2, TFT_DARKGREY, TFT_BLACK); // hour hand
+  sprite.drawWedgeLine(x, y, xH, yH, 8, 2, TFT_LIGHTGREY, TFT_BLACK); // hour hand
   sprite.drawWedgeLine(x, y, xM, yM, 5, 2, TFT_LIGHTGREY, TFT_BLACK); // minute hand
   sprite.fillCircle(x, y, 8, TFT_LIGHTGREY ); // center cap
   sprite.drawWideLine(xS2, yS2, xS, yS, 2.5, TFT_RED, TFT_BLACK ); // second hand
 }
 
+// calc point for a clock hand and slider
 void Display::cspoint(uint16_t &x2, uint16_t &y2, uint16_t x, uint16_t y, float angle, float size)
 {
   float ang =  M_PI * (180-angle) / 180;
@@ -832,15 +952,18 @@ void Display::cspoint(uint16_t &x2, uint16_t &y2, uint16_t x, uint16_t y, float 
   y2 = y + size * cos(ang);
 }
 
-void Display::setPcVolume(int8_t iValue)
+// update the PC volume slider
+void Display::setPcVolumeSlider(int8_t iValue)
 {
   uint8_t i;
   for(i = 0; i < m_nTileCnt; i++)
     if(m_tile[i].nSliderType == SL_PC)
       break;
-  m_tile[i].nSliderValue = iValue;
+  if(i < m_nTileCnt)
+    m_tile[i].nSliderValue = iValue;
 }
 
+// Flash a red indicator for RX, TX, PC around the top 
 void Display::RingIndicator(uint8_t n)
 {
   uint16_t ang = 130;
