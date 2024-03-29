@@ -81,6 +81,10 @@ void Display::init(void)
   attachInterrupt(IMU_INT2, std::bind(&Display::handleISR2, this), FALLING);
 
   touch.begin();
+
+  m_vadc = analogRead(BATTV);
+  if(m_vadc > 1890) // probably full and charging
+    m_bCharging = true;
 }
 
 void Display::exitScreensaver()
@@ -238,12 +242,12 @@ void Display::service(void)
   if(year() < 2024 || WiFi.status() != WL_CONNECTED) // Do a connecting effect
   {
     static int16_t ang[2] = {3, 20};
-    tft.drawSmoothArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 119, 116, ang[0], ang[1], TFT_BLUE, TFT_BLACK, false);
-    ang[0] += 16;
-    ang[1] += 32;
+    tft.drawArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 119, 116, ang[0], ang[1], TFT_BLUE, TFT_BLACK, false);
+    ang[0] += 2;
+    ang[1] += 4;
     ang[0] %= 360;
     ang[1] %= 360;
-    tft.drawSmoothArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 119, 116, ang[0], ang[1], (WiFi.status() == WL_CONNECTED) ? TFT_GREEN:TFT_RED, TFT_BLACK, false);
+    tft.drawArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 119, 116, ang[0], ang[1], (WiFi.status() == WL_CONNECTED) ? TFT_GREEN:TFT_RED, TFT_BLACK, false);
   }
 
   if( m_int1Triggered) // may be used later
@@ -407,6 +411,15 @@ void Display::oneSec()
       formatButtons(pTile);
     }
   }
+
+  uint16_t v = analogRead(BATTV);
+
+  if(m_vadc < v - 50) // charging usually jumps about 300+
+    m_bCharging = true;
+  else if(m_vadc > v + 50)
+    m_bCharging = false;
+  m_vadc = v;
+
 /*
   float acc[3], gyro[3];
 
@@ -563,37 +576,6 @@ void Display::drawTile(int8_t nTile, bool bFirst)
 
 void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed)
 {
-  switch(pBtn->nFunction)
-  {
-    case BTF_RSSI:
-      updateRSSI(pBtn);
-      return;
-    case BTF_Time:
-      drawTime(pBtn);
-      return;
-    case BTF_Date:
-      drawDate(pBtn);
-      return;
-    case BTF_DOW:
-      drawDOW(pBtn);
-      return;
-    case BTF_Volts:
-      drawVolts(pBtn);
-      return;
-    case BTF_BattPerc:
-      drawBattPerc(pBtn);
-      return;
-    case BTF_Temp:
-      drawTemp(pBtn);
-      return;
-    case BTF_Lights:
-      if(lights.getSwitch(pBtn->ID)) // light is on
-        pBtn->flags |= BF_STATE_2;
-      else
-        pBtn->flags &= ~BF_STATE_2;
-      break;
-  }
-
   uint8_t nState = (pBtn->flags & BF_STATE_2) ? 1:0;
   uint16_t colorBg = (nState) ? TFT_NAVY : TFT_DARKGREY;
 
@@ -601,6 +583,77 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed)
   {
     nState = 1; // todo: icon tri-state
     colorBg = TFT_DARKCYAN;
+  }
+
+  String s = "";
+
+  switch(pBtn->nFunction)
+  {
+    case BTF_RSSI:
+      btnRSSI(pBtn);
+      return;
+    case BTF_Time:
+      if(year() < 2024) // don't display invalid time
+        return;
+      s = String( hourFormat12() );
+      if(hourFormat12() < 10)
+        s = " " + s;
+      s += ":";
+      if(minute() < 10) s += "0";
+      s += minute();
+      s += ":";
+      if(second() < 10) s += "0";
+      s += second();
+      s += " ";
+      s += isPM() ? "PM":"AM";
+      s += " ";
+      break;
+    case BTF_Date:
+      if(year() < 2024) // don't display invalid time
+        return;
+
+      s = monthShortStr(month());
+      s += " ";
+      s += String(day());
+      break;
+    case BTF_DOW:
+      if(year() < 2024) // don't display invalid time
+        return;
+      s = dayShortStr(weekday());
+      break;
+    case BTF_Volts:
+      {
+        float fV = 3.3 / (1<<12) * 3 * m_vadc;
+        s =String(fV, 2)+"V";
+      }
+      break;
+    case BTF_BattPerc:
+
+      // 1550 = 3.74 = full with normal draw  (0.5V drop on 1200mAh!)
+      // 1283 = 3.1V
+      {
+        uint8_t perc = constrain( (m_vadc - 1283) * 100 / (1550 - 1283), 0, 100);
+        s = String(perc)+'%';
+      }
+      break;
+    case BTF_Temp:
+      s = String(qmi.readTemp(), 1)+"F";
+      break;
+    case BTF_Stat_Temp:
+      s = String((float)m_statTemp/10, 1);
+      break;
+    case BTF_Stat_SetTemp:
+      s  = String((float)m_statSetTemp/10, 1);
+      break;
+    case BTF_Stat_OutTemp:
+      s = String((float)m_outTemp/10, 1);
+      break;
+    case BTF_Lights:
+      if(lights.getSwitch(pBtn->ID)) // light is on
+        pBtn->flags |= BF_STATE_2;
+      else
+        pBtn->flags &= ~BF_STATE_2;
+      break;
   }
 
   int16_t yOffset = pBtn->y;
@@ -611,14 +664,23 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed)
   if(yOffset < 10 || yOffset >= DISPLAY_HEIGHT) // cut off anything out of bounds (top is covered by title blank)
     return;
 
-  if(pBtn->pIcon[nState])
+  if(pBtn->pIcon[nState]) // draw an image if given
     sprite.pushImage(pBtn->x, yOffset, pBtn->w, pBtn->h, pBtn->pIcon[nState]);
-  else // if no image or no image for state 2, fill with a color
+  else if(pBtn->flags & BF_BORDER) // bordered text item
+    sprite.drawRoundRect(pBtn->x, yOffset, pBtn->w, pBtn->h, 5, colorBg);
+  else if(s.length() == 0) // if no image or no image for state 2, fill with a color
     sprite.fillRoundRect(pBtn->x, yOffset, pBtn->w, pBtn->h, 5, colorBg);
 
-  sprite.setTextColor(TFT_CYAN, colorBg);
-  if(pBtn->pszText && pBtn->pszText[0])
+  if(s.length()) // button text was replaced
+  {
+    sprite.setTextColor(TFT_WHITE, TFT_BLACK);
+    sprite.drawString( s, pBtn->x + (pBtn->w / 2), yOffset + (pBtn->h / 2) - 2 );
+  }
+  else if(pBtn->pszText && pBtn->pszText[0])
+  {
+    sprite.setTextColor(TFT_CYAN, colorBg);
     sprite.drawString( pBtn->pszText, pBtn->x + (pBtn->w / 2), yOffset + (pBtn->h / 2) - 2 );
+  }
 }
 
 // called when button is activated
@@ -747,100 +809,6 @@ void Display::drawNotifs(Tile& pTile)
   }
 }
 
-// time
-void Display::drawTime(Button *pBtn)
-{
-  if(year() < 2024) // don't display invalid time
-    return;
-
-  String sTime = String( hourFormat12() );
-  if(hourFormat12() < 10)
-    sTime = " " + sTime;
-  sTime += ":";
-  if(minute() < 10) sTime += "0";
-  sTime += minute();
-  sTime += ":";
-  if(second() < 10) sTime += "0";
-  sTime += second();
-  sTime += " ";
-  sTime += isPM() ? "PM":"AM";
-  sTime += " ";
-
-  sprite.setTextColor(TFT_WHITE, TFT_BLACK );
-  sprite.setFreeFont(&FreeSans9pt7b);
-  sprite.drawString(sTime, pBtn->x, pBtn->y);
-}
-
-void Display::drawDate(Button *pBtn)
-{
-  if(year() < 2024) // don't display invalid time
-    return;
-
-  sprite.setTextColor(TFT_WHITE, TFT_BLACK );
-  sprite.setFreeFont(&FreeSans9pt7b);
-
-  String sTime = monthShortStr(month());
-  sTime += " ";
-  sTime += String(day());
-  sprite.drawString(sTime, pBtn->x, pBtn->y);
-}
-
-void Display::drawDOW(Button *pBtn)
-{
-  if(year() < 2024) // don't display invalid time
-    return;
-
-  sprite.setTextColor(TFT_WHITE, TFT_BLACK );
-  sprite.setFreeFont(&FreeSans9pt7b);
-
-  sprite.drawString(dayShortStr(weekday()), pBtn->x, pBtn->y);
-}
-
-void Display::drawVolts(Button *pBtn)
-{
-  static uint16_t lastV;
-  static bool bCharging;
-  uint16_t v = analogRead(BATTV);
-
-  float fV = 3.3 / (1<<12) * 3 * v;
-
-  if(lastV > v + 150) // charging usually jumps about 300+
-    bCharging = true;
-  else if(lastV < v - 150)
-    bCharging = false;
-
-  lastV = v;
-
-  uint16_t color = (bCharging) ? TFT_RED:TFT_WHITE;
-  if(v < 1283) color = TFT_RED; // 1283 = 3.10V
-
-  sprite.setTextColor(color, TFT_BLACK );
-  sprite.setFreeFont(&FreeSans9pt7b);
-  sprite.drawString(String(fV, 2)+"V", pBtn->x, pBtn->y);
-}
-
-void Display::drawBattPerc(Button *pBtn)
-{
-  sprite.setTextColor(TFT_WHITE, TFT_BLACK );
-  sprite.setFreeFont(&FreeSans9pt7b);
-
-  uint16_t v = analogRead(BATTV);
-  float fV = 3.3 / (1<<12) * 3 * v;
-
-  float perc = (fV - 3.6) * 100 / (4.2-3.6); // Todo: The draw drops below 3.6 easily
-  if(perc < 0) perc = 0;
-  sprite.drawString(String(perc, 0), pBtn->x, pBtn->y);
-}
-
-void Display::drawTemp(Button *pBtn)
-{
-  sprite.setTextColor(TFT_WHITE, TFT_BLACK );
-  sprite.setFreeFont(&FreeSans9pt7b);
-
-  float fT = qmi.readTemp();// * 9/5 + 32;
-  sprite.drawString(String(fT, 1), pBtn->x, pBtn->y);
-}
-
 // smooth adjust brigthness (0-255)
 void Display::dimmer()
 {
@@ -897,7 +865,7 @@ bool Display::sliderHit(uint8_t& value)
 }
 
 // Draw RSSI bars
-void Display::updateRSSI(Button *pBtn)
+void Display::btnRSSI(Button *pBtn)
 {
 #define RSSI_CNT 8
   static int16_t rssi[RSSI_CNT];
@@ -929,7 +897,7 @@ void Display::drawClock()
   const float x = DISPLAY_WIDTH/2; // center
   const float y = DISPLAY_HEIGHT/2;
 
-  sprite.drawSmoothCircle(x, y, x-2, TFT_WHITE, TFT_BLACK); // erase BG
+  sprite.drawSmoothCircle(x, y, x-1, TFT_WHITE, TFT_BLACK); // draw outer ring
 
   for(uint16_t i = 0; i < 360; i += 6) // drawing the watchface instead of an image saves 9% of PROGMEM
   {
