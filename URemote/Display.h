@@ -56,7 +56,6 @@ enum Button_Function
   BTF_Lights,
   BTF_WIFI_ONOFF,
   BTF_BT_ONOFF,
-  BTF_Stat,
   BTF_Clear,
   BTF_LearnIR,
   BTF_PC_Media,
@@ -68,10 +67,14 @@ enum Button_Function
   BTF_Volts,
   BTF_BattPerc,
   BTF_Temp,
+  BTF_Stat, // stat commands
+  BTF_Stat_Temp,
+  BTF_Stat_SetTemp,
+  BTF_Stat_OutTemp,
 };
 
 // Button flags
-#define BF_INPUT   (1 << 0)
+#define BF_BORDER  (1 << 0) // Just a text time, not button
 #define BF_REPEAT  (1 << 1) // repeatable (hold)
 #define BF_STATE_2 (1 << 2) // tri-state
 #define BF_FIXED_POS (1 << 3)
@@ -142,13 +145,7 @@ private:
   void sliderCmd(uint8_t nType, uint8_t nOldVal, uint8_t nNewVal);
   void dimmer(void);
   void drawSlider(uint8_t val);
-  void updateRSSI(Button *pBtn);
-  void drawTime(Button *pBtn);
-  void drawDate(Button *pBtn);
-  void drawDOW(Button *pBtn);
-  void drawVolts(Button *pBtn);
-  void drawTemp(Button *pBtn);
-  void drawBattPerc(Button *pBtn);
+  void btnRSSI(Button *pBtn);
   void drawNotifs(Tile& pTile);
   void drawClock(void);
   bool sliderHit(uint8_t& value);
@@ -166,7 +163,7 @@ private:
     // tile 0 (top/pull-down tile / startup / clock)
     {
       "",
-      0,
+      0, // row 0
       EX_CLOCK,
       SL_None,
       0,
@@ -175,16 +172,16 @@ private:
       0,//watchFace,
       {
         { 1, 0, BF_FIXED_POS, BTF_RSSI, "", {0},  26, 26, {0}, (DISPLAY_WIDTH/2 - 26/2), 180 + 26},
-        { 2, 0, BF_FIXED_POS, BTF_Time, "", {0}, 100, 10, {0}, DISPLAY_WIDTH/2, 60},
-        { 3, 0, BF_FIXED_POS, BTF_Date, "", {0}, 100, 10, {0}, DISPLAY_WIDTH/2, 156},
-        { 4, 0, BF_FIXED_POS, BTF_DOW,  "",  {0},  50, 10, {0}, 178, 117},
-        { 5, 0, BF_FIXED_POS, BTF_Volts,  "",  {0},  50, 10, {0}, 68, 117},
+        { 2, 0, BF_FIXED_POS, BTF_Time, "12:00:00 AM", {0}, 120, 32, {0}, DISPLAY_WIDTH/2-56, 50},
+        { 3, 0, BF_FIXED_POS, BTF_Date,  "Jan 01", {0}, 80, 32, {0}, DISPLAY_WIDTH/2-40, 152},
+        { 4, 0, BF_FIXED_POS, BTF_DOW,   "Sun",  {0},  40, 32, {0}, 170, 105},
+        { 5, 0, BF_FIXED_POS, BTF_Volts, "4.20",  {0},  50, 32, {0}, 28, 105},
       }
     },
     // tile 1 (left-most horizontal tile)
     {
       "Power",
-      1,
+      1, // row 1
       0,
       SL_None,
       0,
@@ -203,7 +200,7 @@ private:
     // tile 2
     {
       "TV",
-      2,
+      1,
       0,
       0,
       0,
@@ -232,7 +229,7 @@ private:
     //
     {
       "PC",
-      2,
+      1,
       0,
       SL_PC,
       0,
@@ -252,7 +249,7 @@ private:
     //
     {
       "Lights",
-      2,
+      1,
       EX_SCROLL,
       SL_Lights,
       0,
@@ -266,7 +263,7 @@ private:
     //
     {
       "Thermostat",
-      3,
+      2, // row 2
       0,
       SL_None,
       0,
@@ -274,14 +271,17 @@ private:
       0,
       NULL,
       {
-        {1, 0, 0, BTF_Stat, NULL, {i_up, 0}, 32, 32, {0}},
-        {2, 1, 0, BTF_Stat, NULL, {i_dn, 0}, 32, 32, {0}},
+        {1, 0, BF_BORDER, BTF_Stat_OutTemp, "",  {0}, 60, 32, {1,0}},
+        {2, 1, BF_BORDER, BTF_Stat_Temp, "",  {0}, 60, 32, {1,0}},
+        {3, 1, 0, BTF_Stat, NULL, {i_up, 0}, 32, 32, {0}},
+        {4, 2, BF_BORDER, BTF_Stat_SetTemp, "",  {0}, 60, 32, {1,0}},
+        {5, 2, 0, BTF_Stat, NULL, {i_dn, 0}, 32, 32, {1}},
       }
     },
     //
     {
       "Thermostat 2",
-      3,
+      2,
       0,
       SL_None,
       0,
@@ -296,7 +296,7 @@ private:
     // Pull-up tile (last)
     {
       "Settings",
-      4,
+      3, // row 3
       0,
       SL_None,
       0,
@@ -312,7 +312,7 @@ private:
     // Notification tile (very last)
     {
       "Notifications",
-      5,
+      4,
       EX_NOTIF | EX_SCROLL,
       SL_None,
       0,
@@ -332,12 +332,17 @@ private:
   uint32_t m_nDispFreeze;
   uint8_t m_nRowStart[TILES]; // index of screen at row
   uint8_t m_nColCnt[TILES]; // column count for each row of screens
-
+  uint16_t m_vadc;
 #define NOTE_CNT 10
   char *m_pszNotifs[NOTE_CNT + 1];
 
 public:
   uint8_t m_brightness = 200; // initial brightness
+  bool m_bCharging;
+
+  uint16_t m_statTemp;
+  uint16_t m_statSetTemp;
+  uint16_t m_outTemp;
 };
 
 extern Display display;
