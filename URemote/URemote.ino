@@ -22,11 +22,11 @@ SOFTWARE.
 */
 
 // Build with Arduino IDE 1.8.57.0
-//  ESP32: (2.0.13) ESP32C3 Dev Module, QIO, 160MHz or 80MHz, Minimal SPIFFS (1.9MB with OTA/190KB SPIFFS) SPIFFS not used, but OTA is.
+//  ESP32: (2.0.13) ESP32S3 Dev Module, QIO, CPU Freq: 80MHz for lowest power (<60mA), Flash: 16MB, PSRAM: QSPI PSRAM, Partition: 16MB or Rainmaker.
 
 #define OTA_ENABLE  //uncomment to enable Arduino IDE Over The Air update code (uses ~4K heap)
 #define SERVER_ENABLE // uncomment to enable server and WebSocket
-//#define BLE_ENABLE // uncomment for BLE keyboard (uses > 100K heap)
+//#define BLE_ENABLE // uncomment for BLE keyboard (uses 510KB (16%) PROGMEN and >100K heap)
 
 #include <WiFi.h>
 #include <TimeLib.h> // http://www.pjrc.com/teensy/td_libs_Time.html
@@ -183,22 +183,19 @@ void startWiFi()
   ArduinoOTA.setHostname(hostName);
   ArduinoOTA.begin();
   ArduinoOTA.onStart([]() {
+    display.notify("OTA Update");
     ee.update();
 #ifdef SERVER_ENABLE
-//    jsonString js("print");
-//    js.Var("text", "OTA update started");
-//    ws.textAll(js.Close());
+    jsonString js("print");
+    js.Var("text", "OTA update started");
+    ws.textAll(js.Close());
 #endif
     delay(100);
   });
 
    //This callback will be called when OTA encountered Error
   ArduinoOTA.onError([](ota_error_t n) {
-#ifdef SERVER_ENABLE
-    jsonString js("print");
-    js.Var("text", n);
-    ws.textAll(js.Close());
-#endif
+
   });
 
     //This callback will be called when OTA is receiving data
@@ -263,7 +260,7 @@ bool secondsWiFi() // called once per second
 bool sendBLE(uint16_t *pCode)
 {
 #ifdef BLE_ENABLE
-  return bleKeyboard.write(pCode);
+  return bleKeyboard.write(pCode[0]);
 #else
   return false;
 #endif
@@ -276,7 +273,7 @@ bool sendBLE(uint16_t *pCode)
   case 3: // back
   case 4: // Mute
   case 5: // Volume up
-  case 5: // Volume down
+  case 6: // Volume down
 */
 
 bool sendPCMediaCmd( uint16_t *pCode)
@@ -314,7 +311,10 @@ const char *jsonListCmd[] = {
   "RX",
   "PC_REMOTE", // PC commands client
   "VOLUME",
-  "LED", // 7
+  "LED",
+  "STATTEMP",
+  "STATSETTEMP", // 9
+  "OUTTEMP",
   NULL
 };
 
@@ -353,6 +353,15 @@ void jsonCallback(int16_t iName, int iValue, char *psValue)
       break;
     case 7: // LED
       digitalWrite(IR_SEND_PIN, iValue ? HIGH:LOW);
+      break;
+    case 8: // STATTEMP
+      display.m_statTemp = iValue;
+      break;
+    case 9: // STATSETTEMP
+      display.m_statSetTemp = iValue;
+      break;
+    case 10: // OUTTEMP
+      display.m_outTemp = iValue;
       break;
   }
 }
@@ -426,6 +435,13 @@ void setup()
 
   IrSender.begin(); // Start with IR_SEND_PIN as send pin
   IrSender.enableIROut(SAMSUNG_KHZ); // Call it with 38 kHz just to initialize the values
+
+#ifndef BLE_ENABLE
+  ee.bBtEnabled = false;
+#endif
+
+  if(ee.bBtEnabled == false)
+    btStop();
 
 #ifdef SERVER_ENABLE
   ws.onEvent(onWsEvent);
