@@ -468,12 +468,12 @@ void QMI8658::setWakeOnMotion(bool bEnable)
   reset();
 	enum QMI8658_Interrupt interrupt = QMI8658_Int2;
 	enum QMI8658_InterruptState initialState = QMI8658State_low;
-	enum QMI8658_WakeOnMotionThreshold threshold = QMI8658WomThreshold_low;
+	enum QMI8658_WakeOnMotionThreshold threshold = QMI8658WomThreshold_high;
 	uint8_t blankingTime = 0x00;
 	const uint8_t blankingTimeMask = 0x3F;
 
 	enableSensors(QMI8658_CTRL7_DISABLE_ALL);
-	config_acc(QMI8658AccRange_4g, QMI8658AccOdr_LowPower_128Hz, QMI8658Lpf_Disable, QMI8658St_Disable);
+	config_acc(QMI8658AccRange_16g, QMI8658AccOdr_LowPower_21Hz, QMI8658Lpf_Disable, QMI8658St_Disable);
 
   if(bEnable)
   {
