@@ -20,18 +20,25 @@ TFT_eSprite sprite2 = TFT_eSprite(&tft);
 
 QMI8658 qmi;
 
+//Lights class
 extern Lights lights;
+
+// URemote functions
+extern int WsPcClientID;
+extern void stopWiFi();
+extern void startWiFi();
 extern void sendIR(uint16_t *pCode);
 extern bool sendBLE(uint16_t *pCode);
 extern bool sendPCMediaCmd( uint16_t *pCode);
+extern bool sendStatCmd( uint16_t *pCode);
 extern void consolePrint(String s); // for browser debug
 
 #define I2C_SDA   6
 #define I2C_SCL   7
-#define IMU_INT1  4
-#define IMU_INT2  3
+#define IMU_INT1  4 // normally high
+#define IMU_INT2  3 // normally low by UMI WOM
 #define TP_RST   13
-#define TP_INT    5
+#define TP_INT    5 // normally high
 #define TFT_BL    2
 #define BATTV     1
 
@@ -73,18 +80,20 @@ void Display::init(void)
   sprite.pushSprite(0, 0); // draw screen 0 on start
 
   qmi.init();
-  qmi.enableSensors(7);
 
   pinMode(IMU_INT1, INPUT_PULLUP);
   pinMode(IMU_INT2, INPUT_PULLUP);
   attachInterrupt(IMU_INT1, std::bind(&Display::handleISR1, this), FALLING);
-  attachInterrupt(IMU_INT2, std::bind(&Display::handleISR2, this), FALLING);
+  attachInterrupt(IMU_INT2, std::bind(&Display::handleISR2, this), RISING);
 
   touch.begin();
 
   m_vadc = analogRead(BATTV);
   if(m_vadc > 1890) // probably full and charging
     m_bCharging = true;
+
+  qmi.setWakeOnMotion(false); // set normal gyro/acc
+  qmi.read_gyro_xyz(m_gyroCal);
 }
 
 void Display::exitScreensaver()
@@ -96,7 +105,7 @@ void Display::exitScreensaver()
     drawTile(m_nCurrTile, true); // draw over screensaver
     sprite.pushSprite(0, 0);
     qmi.setWakeOnMotion(false); // enable gyro/acc/temp
-
+    m_int2Triggered = false; // causes an interrupt
   }
   m_brightness = ee.brightLevel[1]; // increase brightness for any touch
 }
@@ -105,6 +114,45 @@ void Display::service(void)
 {
   static Button *pCurrBtn; // for button repeats and release
   static uint32_t lastms; // for button repeats
+
+  if( m_int1Triggered) // may be used later
+  {
+    m_int1Triggered = false;
+    ets_printf("INT1\n");
+    m_backlightTimer = DISPLAY_TIMEOUT; // reset timer for any touch
+//    endSleep();
+  }
+
+  if( m_int2Triggered) // set for IMU WOM
+  {
+//    ets_printf("INT2\n");
+    m_int2Triggered = false;
+    m_backlightTimer = DISPLAY_TIMEOUT;
+    if( m_brightness < ee.brightLevel[1] )
+      exitScreensaver();
+  }
+
+  if( m_tpintTriggered) // may be used later
+  {
+    m_tpintTriggered = false;
+//    ets_printf("TP_INT\n");
+  }
+
+  if(m_bSleeping)
+  {
+    if( snooze(10000) )
+    {
+      endSleep();
+      tft.init(); // reset the display
+      tft.setSwapBytes(true);
+      tft.setTextPadding(8); 
+      m_backlightTimer = DISPLAY_TIMEOUT;
+      if( m_brightness < ee.brightLevel[1] )
+        exitScreensaver();
+    }
+    else
+      return;
+  }
 
   dimmer();
 
@@ -118,6 +166,8 @@ void Display::service(void)
 #ifdef SCREENSAVERS_H
   if(m_brightness == ee.brightLevel[0]) // full dim activates screensaver
     ss.run();
+  else if(m_tile[m_nCurrTile].Extras & EX_TEST)
+    testTile();
 #endif
 
   static bool bScrolling; // scrolling active
@@ -164,7 +214,10 @@ void Display::service(void)
       m_backlightTimer = DISPLAY_TIMEOUT; // reset timer for any touch
   
       if( m_brightness < ee.brightLevel[1] )
+      {
         exitScreensaver();
+        endSleep();
+      }
     }
     else // 2=active
     {
@@ -239,30 +292,82 @@ void Display::service(void)
     }
   }
 
-  if(year() < 2024 || WiFi.status() != WL_CONNECTED) // Do a connecting effect
+  if(ee.bWiFiEnabled && (year() < 2024 || WiFi.status() != WL_CONNECTED)) // Do a connecting effect
   {
-    static int16_t ang[2] = {3, 20};
-    tft.drawArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 119, 116, ang[0], ang[1], TFT_BLUE, TFT_BLACK, false);
-    ang[0] += 2;
-    ang[1] += 4;
-    ang[0] %= 360;
-    ang[1] %= 360;
-    tft.drawArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 119, 116, ang[0], ang[1], (WiFi.status() == WL_CONNECTED) ? TFT_GREEN:TFT_RED, TFT_BLACK, false);
+    static int16_t ang;
+    for(uint8_t i = 0; i < 8; i++)
+    {
+      tft.drawArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 120, 117, ang, ang + 10, TFT_WHITE, TFT_BLACK, false);
+      ang += 30;
+      ang %= 360;
+      tft.drawArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 120, 117, ang + 90, ang + 100, (WiFi.status() == WL_CONNECTED) ? TFT_GREEN:TFT_RED, TFT_BLACK, false);
+    }
   }
+}
 
-  if( m_int1Triggered) // may be used later
-  {
-    m_int1Triggered = false;
-    ets_printf("INT1\n");
-  }
+void Display::startSleep()
+{
+  if(m_bSleeping || m_sleepTimer)
+    return;
 
-  if( m_int2Triggered) // set for IMU WOM
-  {
-//    ets_printf("INT2\n");
-    m_int2Triggered = false;
-    if( m_brightness < ee.brightLevel[1] )
-      exitScreensaver();
-  }
+  m_bSleeping = true;
+  analogWrite(TFT_BL, m_bright = 0);
+  if(ee.bWiFiEnabled)
+    stopWiFi();
+  if(ee.bBtEnabled)
+    btStop();
+}
+
+void Display::endSleep()
+{
+  if(!m_bSleeping)
+    return;
+
+  m_sleepTimer = 0;
+  m_bSleeping = false;
+
+  if(ee.bWiFiEnabled)
+    startWiFi();
+  if(ee.bBtEnabled)
+    btStart();
+  qmi.init();
+}
+
+// A tile for playing around
+void Display::testTile()
+{
+  static uint8_t dly = 8;
+  if(--dly)
+    return;
+  dly = 8;
+
+  static float gyroPos[3] = {120, 120, 180};
+  float gyro[3];
+
+  qmi.read_gyro_xyz(gyro);
+
+  if(gyro[0] == 0)
+    qmi.enableSensors(7);
+
+  sprite.drawArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 111, 108, (int)gyroPos[2], ((int)gyroPos[2]+4) % 360, TFT_BLACK, TFT_BLACK, false);
+  sprite.fillCircle(gyroPos[0], gyroPos[1], 8, TFT_BLACK );
+
+  gyroPos[0] += ((gyro[0]-m_gyroCal[0]) / 100);
+  gyroPos[1] += ((gyro[1]-m_gyroCal[1]) / 100);
+  gyroPos[2] -= ((gyro[2]-m_gyroCal[2]) / 250);
+
+  gyroPos[0] = constrain(gyroPos[0], 0, 240);
+  gyroPos[1] = constrain(gyroPos[1], 0, 240);
+  if(gyroPos[2] < 0)  gyroPos[2] += 360;
+  if(gyroPos[2] >= 360)  gyroPos[2] -= 360;
+
+  uint16_t r = gyroPos[2];
+  uint16_t y = gyroPos[1];
+  uint16_t x = gyroPos[0];
+
+  sprite.fillCircle(x, y, 8, TFT_BLUE );
+  sprite.drawArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 111, 108, (int)gyroPos[2], ((int)gyroPos[2]+4) % 360, TFT_RED, TFT_BLACK, false);
+  sprite.pushSprite(0, 0);
 }
 
 // swipe effects
@@ -339,7 +444,7 @@ void Display::swipeTile()
       drawTile(m_nCurrTile, true);
       for(int16_t i = DISPLAY_HEIGHT; i >= 0; i -= 8)
       {
-        sprite2.pushSprite(0, 0, 0, DISPLAY_HEIGHT - i, DISPLAY_WIDTH, i);
+        sprite2.pushSprite(0, 0, 0, DISPLAY_HEIGHT - i, DISPLAY_WIDTH, i); // TFT_eSPI crops so this is no faster
         sprite.pushSprite(0, i, 0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT - i);
       }
       break;
@@ -354,11 +459,15 @@ void IRAM_ATTR Display::handleISR2(void)
 {
   m_int2Triggered = true;
 }
+void IRAM_ATTR Display::handleTPISR(void)
+{
+  m_tpintTriggered = true;
+}
 
 // called each second
 void Display::oneSec()
 {
-  if(m_nDispFreeze)
+  if(m_bSleeping || m_nDispFreeze) // don't overwrite the popup
     return;
 
   if( m_backlightTimer ) // the dimmer thing
@@ -371,6 +480,7 @@ void Display::oneSec()
 #endif
       qmi.setWakeOnMotion(true); // enable movement to wake
       m_int2Triggered = false; // causes an interrupt
+      m_sleepTimer = ee.sleepTime;
     }
   }
 
@@ -380,6 +490,14 @@ void Display::oneSec()
     sprite.pushSprite(0,0);
   }
 
+  if(m_sleepTimer && ((WsPcClientID) ? (m_nWsConnected <= 1) : (m_nWsConnected == 0) ) ) // PC connection doesn't count
+  {
+    if(--m_sleepTimer == 0)
+    {
+      startSleep();
+      return;
+    }
+  }
   static bool bQDone = false;
   // A query or command is done
   if(lights.checkStatus() == LI_Done)
@@ -419,14 +537,28 @@ void Display::oneSec()
   else if(m_vadc > v + 50)
     m_bCharging = false;
   m_vadc = v;
+}
 
-/*
-  float acc[3], gyro[3];
+bool Display::snooze(uint32_t ms)
+{
+#define S_TO_uS 1000000
+#define mS_TO_uS 1000
 
-  qmi.read_acc_xyz(acc);
-  qmi.read_gyro_xyz(gyro);
-  ets_printf("acc %d %d %d  gyro %d %d %d\n", (int)acc[0], (int)acc[1], (int)acc[2], (int)gyro[0], (int)gyro[1], (int)gyro[2]);
-*/
+  static uint32_t oldMs;
+
+  if(ms != oldMs)
+  { 
+    oldMs = ms;
+    esp_sleep_enable_ext0_wakeup( GPIO_NUM_5, 0); // TP_INT
+    esp_sleep_enable_ext1_wakeup( 1 << IMU_INT2, ESP_EXT1_WAKEUP_ANY_HIGH);
+    if(ms > 10000) ms = 10000;
+    esp_sleep_enable_timer_wakeup(ms * mS_TO_uS);
+    delay(100);
+  }
+  esp_light_sleep_start();
+
+  esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+  return (wakeup_reason != ESP_SLEEP_WAKEUP_TIMER);
 }
 
 // scrolling oversized tiles and notification list
@@ -654,10 +786,25 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed)
       else
         pBtn->flags &= ~BF_STATE_2;
       break;
+    case BTF_WIFI_ONOFF:
+      if(ee.bWiFiEnabled) // on
+        pBtn->flags |= BF_STATE_2;
+      else
+        pBtn->flags &= ~BF_STATE_2;      
+      break;
+    case BTF_BT_ONOFF:
+      if(ee.bBtEnabled) // on
+        pBtn->flags |= BF_STATE_2;
+      else
+        pBtn->flags &= ~BF_STATE_2;      
+      break;
+    case BTF_Text:
+      colorBg = TFT_BLACK;
+      break;
   }
 
   int16_t yOffset = pBtn->y;
-  
+
   if( !(pBtn->flags & BF_FIXED_POS) ) // don't scroll fixed pos buttons
     yOffset -= pTile.nScrollIndex;
 
@@ -668,7 +815,7 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed)
     sprite.pushImage(pBtn->x, yOffset, pBtn->w, pBtn->h, pBtn->pIcon[nState]);
   else if(pBtn->flags & BF_BORDER) // bordered text item
     sprite.drawRoundRect(pBtn->x, yOffset, pBtn->w, pBtn->h, 5, colorBg);
-  else if(s.length() == 0) // if no image or no image for state 2, fill with a color
+  else if(s.length() == 0 && pBtn->nFunction != BTF_Text ) // if no image, or no image for state 2, and not just text, fill with a color
     sprite.fillRoundRect(pBtn->x, yOffset, pBtn->w, pBtn->h, 5, colorBg);
 
   if(s.length()) // button text was replaced
@@ -698,9 +845,6 @@ void Display::buttonCmd(Button *pBtn, bool bRepeat)
       sendIR(pBtn->code);
       break;
 
-    case BTF_LearnIR:
-      break;
-
     case BTF_BT_ONOFF:
       ee.bBtEnabled = !ee.bBtEnabled;
       if(ee.bBtEnabled)
@@ -719,17 +863,21 @@ void Display::buttonCmd(Button *pBtn, bool bRepeat)
 
     case BTF_WIFI_ONOFF:
       ee.bWiFiEnabled = !ee.bWiFiEnabled;
-/*    if(ee.bWiFiEnabled)
-        restartWiFi();
+      if(ee.bWiFiEnabled)
+        startWiFi();
       else
         stopWiFi();
-*/
+
       pBtn->pszText = (ee.bWiFiEnabled) ? "WiFi On" : "WiFi Off";
       notify((char *)pBtn->pszText);
       if(ee.bWiFiEnabled)
         pBtn->flags |= BF_STATE_2;
       else
         pBtn->flags &= ~BF_STATE_2;
+      break;
+
+    case BTF_Restart:
+      ESP.restart();
       break;
 
     case BTF_BLE:
@@ -740,6 +888,11 @@ void Display::buttonCmd(Button *pBtn, bool bRepeat)
     case BTF_PC_Media:
       if( !sendPCMediaCmd(pBtn->code) )
         notify("PC command failed");
+      break;
+
+    case BTF_Stat:
+      if( !sendStatCmd(pBtn->code) )
+        notify("Stat command failed");
       break;
 
     case BTF_Clear:
@@ -779,7 +932,7 @@ void Display::notify(char *pszNote)
   uint8_t x = (DISPLAY_WIDTH/2) - (w >> 1); // center on screen
   const uint8_t y = 30; // kind of high up
 
-  tft.fillRoundRect(x, y, w, tft.fontHeight() + 5, 5, TFT_ORANGE);
+  tft.fillRoundRect(x, y, w, tft.fontHeight() + 3, 5, TFT_ORANGE);
   tft.setTextColor(TFT_BLACK, TFT_ORANGE);
   tft.drawString( pszNote, x + BORDER_SPACE, y + BORDER_SPACE );
 
