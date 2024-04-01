@@ -27,10 +27,12 @@ public:
   char     szSSIDPassword[24] = ""; // and password
   char     iotPassword[24] = "password"; // password for controlling dimmers and switches
   int8_t   tz = -5;                 // local timezone
-  bool     bBtEnabled = true;
+  bool     bBtEnabled = false;
   bool     bWiFiEnabled = true;
   uint8_t  lightIp[4] = {192,168,31,73}; // Device to get all lights/switches/dimmers IP list
   uint8_t  brightLevel[2] = {30, 180}; // brightness {dim, highest}
+  uint16_t sleepTime = 5*60; // timer for sleep mode
+
 #define EE_LIGHT_CNT 18
   iotLight lights[EE_LIGHT_CNT] =
   {
