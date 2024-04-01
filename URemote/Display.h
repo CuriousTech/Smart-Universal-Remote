@@ -51,13 +51,13 @@ typedef enum {
 enum Button_Function
 {
   BTF_None,
+  BTF_Text,
   BTF_IR,
   BTF_BLE,
   BTF_Lights,
   BTF_WIFI_ONOFF,
   BTF_BT_ONOFF,
   BTF_Clear,
-  BTF_LearnIR,
   BTF_PC_Media,
   BTF_Macro,
   BTF_RSSI,
@@ -71,6 +71,7 @@ enum Button_Function
   BTF_Stat_Temp,
   BTF_Stat_SetTemp,
   BTF_Stat_OutTemp,
+  BTF_Restart,
 };
 
 // Button flags
@@ -83,6 +84,7 @@ enum Button_Function
 #define EX_CLOCK  (1 << 1)
 #define EX_NOTIF  (1 << 2)
 #define EX_SCROLL (1 << 3)
+#define EX_TEST   (1 << 4)
 
 enum slider_type
 {
@@ -141,6 +143,7 @@ private:
   void scrollPage(uint8_t nTile, int16_t nDelta);
   void formatButtons(Tile& pTile);
   void drawButton(Tile& pTile, Button *pBtn, bool bPressed);
+  void testTile(void);
   void buttonCmd(Button *pBtn, bool bRepeat);
   void sliderCmd(uint8_t nType, uint8_t nOldVal, uint8_t nNewVal);
   void dimmer(void);
@@ -152,10 +155,16 @@ private:
 
   void cspoint(uint16_t &x2, uint16_t &y2, uint16_t x, uint16_t y, float angle, float size);
 
+  void startSleep(void);
+  void endSleep(void);
+  bool snooze(uint32_t ms);
+
   void IRAM_ATTR handleISR1();
   bool m_int1Triggered;
   void IRAM_ATTR handleISR2();
   bool m_int2Triggered;
+  void IRAM_ATTR handleTPISR();
+  bool m_tpintTriggered;
 
 #define TILES 9
   Tile m_tile[TILES] =
@@ -194,7 +203,6 @@ private:
         { 3, 0, 0, BTF_IR,     "DVD",    {0}, 48, 30, {0, 0, 0x34}},
         { 1, 1, 0, BTF_Lights, "Light",  {0}, 48, 30, {0}}, // LivingRoom ID = 1
         { 2, 1, 0, BTF_Lights, "Switch", {0}, 48, 30, {0}}, // Other switch ID = 2
-        { 1, 2, 0, BTF_LearnIR, "Learn",  {0}, 48, 30, {0}},
       },
     },
     // tile 2
@@ -271,26 +279,29 @@ private:
       0,
       NULL,
       {
-        {1, 0, BF_BORDER, BTF_Stat_OutTemp, "",  {0}, 60, 32, {1,0}},
-        {2, 1, BF_BORDER, BTF_Stat_Temp, "",  {0}, 60, 32, {1,0}},
-        {3, 1, 0, BTF_Stat, NULL, {i_up, 0}, 32, 32, {0}},
-        {4, 2, BF_BORDER, BTF_Stat_SetTemp, "",  {0}, 60, 32, {1,0}},
-        {5, 2, 0, BTF_Stat, NULL, {i_dn, 0}, 32, 32, {1}},
+        {1, 0, 0, BTF_Text, "Out:",  {0}, 0, 32, {1,0}},
+        {2, 0, BF_BORDER, BTF_Stat_OutTemp, "",  {0}, 60, 32, {1,0}},
+        {3, 1, 0, BTF_Text, " In:",  {0}, 0, 32, {1,0}},
+        {4, 1, BF_BORDER, BTF_Stat_Temp, "",  {0}, 60, 32, {1,0}},
+        {5, 1, 0, BTF_Stat, NULL, {i_up, 0}, 32, 32, {0}},
+        {6, 2, 0, BTF_Text, "Set:",  {0}, 0, 32, {1,0}},
+        {7, 2, BF_BORDER, BTF_Stat_SetTemp, "",  {0}, 60, 32, {1,0}},
+        {8, 2, 0, BTF_Stat, NULL, {i_dn, 0}, 32, 32, {1}},
+        {9, 3, 0, BTF_Stat, "Fan", {0, 0}, 0, 32, {2}},
       }
     },
     //
     {
-      "Thermostat 2",
+      "Test Tile",
       2,
-      0,
+      EX_TEST,
       SL_None,
       0,
       0,
       0,
       NULL,
       {
-        {1, 0, 0, BTF_Stat, NULL, {i_up, 0}, 32, 32, {0}},
-        {2, 1, 0, BTF_Stat, NULL, {i_dn, 0}, 32, 32, {0}},
+        {0}
       }
     },
     // Pull-up tile (last)
@@ -306,7 +317,8 @@ private:
       {
         {1, 0, 0, BTF_WIFI_ONOFF, "WiFi On",      {0},  112, 28,  {0}},
         {2, 1, 0, BTF_BT_ONOFF, "Bluetooth On", {0},  112, 28, {0}},
-        {3, 1, BF_FIXED_POS, BTF_RSSI, "", {0}, 26, 26, {0}, (DISPLAY_WIDTH/2 - 26/2), 180 + 26},
+        {2, 2, 0, BTF_Restart, "Restart", {0},  112, 28, {0}},
+        {3, 2, BF_FIXED_POS, BTF_RSSI, "", {0}, 26, 26, {0}, (DISPLAY_WIDTH/2 - 26/2), 180 + 26},
       }
     },
     // Notification tile (very last)
@@ -326,19 +338,25 @@ private:
   };
 
   uint16_t m_backlightTimer = DISPLAY_TIMEOUT; // backlight timer, seconds
-  uint8_t m_bright = 0; // current brightness
+  uint8_t m_bright; // current brightness
   uint8_t m_nTileCnt;
-  int8_t m_nCurrTile = 0; // start screen
+  int8_t m_nCurrTile; // start screen
   uint32_t m_nDispFreeze;
   uint8_t m_nRowStart[TILES]; // index of screen at row
   uint8_t m_nColCnt[TILES]; // column count for each row of screens
   uint16_t m_vadc;
+  float m_gyroCal[3];
+
+  uint16_t m_sleepTimer;
+  bool m_bSleeping;
+
 #define NOTE_CNT 10
   char *m_pszNotifs[NOTE_CNT + 1];
 
 public:
   uint8_t m_brightness = 200; // initial brightness
   bool m_bCharging;
+  uint8_t m_nWsConnected; // websockets connected (to stay awake)
 
   uint16_t m_statTemp;
   uint16_t m_statSetTemp;
