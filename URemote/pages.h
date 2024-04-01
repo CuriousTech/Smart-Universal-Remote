@@ -19,6 +19,7 @@ body{width:470px;display:block;margin-left:auto;margin-right:auto;font-family: A
 <script type="text/javascript">
 a=document.all
 idx=0
+led=0
 dys=[['Sun'],['Mon'],['Tue'],['Wed'],['Thu'],['Fri'],['Sat']]
 protos=[
     ['UNKNOWN'],
@@ -55,7 +56,7 @@ $(document).ready(function(){
 
 function openSocket(){
  ws=new WebSocket("ws://"+window.location.host+"/ws")
-// ws=new WebSocket("ws://192.168.31.123/ws")
+// ws=new WebSocket("ws://192.168.31.81/ws")
  ws.onopen=function(evt){}
  ws.onclose=function(evt){alert("Connection closed.");}
  ws.onmessage=function(evt){
@@ -67,7 +68,8 @@ function openSocket(){
   }
   else if(d.cmd=='setup')
   {
- //  fillData(d)
+   a.TZ.value=d.tz
+   a.SLEEP.value=d.st
   }
   else if(d.cmd=='print')
   {
@@ -108,9 +110,24 @@ function sendCode()
  ws.send('{"ADDR":'+addr+',"CODE":'+code+',"REP":'+a.REP.value+'}')
 }
 
+function setSleep(val)
+{
+ ws.send('{"ST":'+val+'}')
+}
+
+function setTZ(val)
+{
+ ws.send('{"TZ":'+val+'}')
+}
+
 function rxCode()
 {
- ws.send('{"RX":'+0+'}')
+ ws.send('{"RX":0}')
+}
+
+function sendRst()
+{
+ ws.send('{"restart":0}')
 }
 
 </script>
@@ -158,7 +175,13 @@ input{
 </head>
 <body bgcolor="silver">
 <table width=450>
-<tr><td>
+<tr>
+<td colspan=2><div id="time">Sun 1 10:00:00 AM</div></td>
+<td></td>
+<td><input type=button value="Restart" onClick="sendRst();"></td>
+</tr>
+<tr>
+<td>
 <div class="dropdown">
   <button class="dropbtn">Protocol</button>
   <div class="dropdown-content">
@@ -190,17 +213,21 @@ input{
 </div>
 </td>
 <td><div id="proto"></div></td>
-<td><div id="time"></div></td>
-<td><input name="RX" type=button value="Decode" onclick="rxCode();"></td>
+<td> Sleep:<input name="SLEEP" type=text value="1500" size="4" onChange="setSleep(this.value);"></td>
+<td>
+ TZ:<input name="TZ" type=text value="0" size="1" onChange="setTZ(this.value);">
+</td>
 </tr>
 <tr>
-<td colspan="3">
+<td><input name="RX" type=button value="Decode" onClick="rxCode();"></td>
+<td>
 Addr:<input name="ADDR" type=text size=1 value='0'>
  Code:<input name="CODE" type=text size=1 value='0'>
+</td>
+<td>
  Reps:<input name="REP" type=text size=1 value='0'>
 </td>
-<td><input name="SEND" type=button value="Send" onclick="sendCode();"></td>
-<td></td>
+<td><input name="SEND" type=button value="Send" onClick="sendCode();"></td>
 </tr>
 </table>
 <table>
