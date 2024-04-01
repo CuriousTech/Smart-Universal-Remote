@@ -45,7 +45,6 @@ SOFTWARE.
 
 AsyncWebServer server( 80 );
 AsyncWebSocket ws("/ws"); // access at ws://[esp ip]/ws
-uint8_t nWsConnected;
 int WsClientID;
 int WsPcClientID;
 void jsonCallback(int16_t iName, int iValue, char *psValue);
@@ -146,20 +145,16 @@ void stopWiFi()
   ArduinoOTA.end();
   delay(100); // fix ArduinoOTA crash?
 #endif
-  WiFi.disconnect();
-  WiFi.enableAP(false);
-  WiFi.enableSTA(false);
-}
-
-void restartWiFi()
-{
-#ifdef OTA_ENABLE
-  ArduinoOTA.begin();
-#endif
+//  WiFi.disconnect();
+//  WiFi.enableAP(false);
+//  WiFi.enableSTA(false);
+  WiFi.setSleep(true);
 }
 
 void startWiFi()
 {
+  WiFi.setSleep(false);
+
   WiFi.hostname(hostName);
   WiFi.mode(WIFI_STA);
 
@@ -175,10 +170,6 @@ void startWiFi()
   }
   connectTimer = now();
 
-#ifdef BLE_ENABLE
-  bleKeyboard.begin();
-#endif
-
 #ifdef OTA_ENABLE
   ArduinoOTA.setHostname(hostName);
   ArduinoOTA.begin();
@@ -192,15 +183,6 @@ void startWiFi()
 #endif
     delay(100);
   });
-
-   //This callback will be called when OTA encountered Error
-  ArduinoOTA.onError([](ota_error_t n) {
-
-  });
-
-    //This callback will be called when OTA is receiving data
-//    void onProgress(THandlerFunction_Progress fn);
-
 #endif
 }
 
@@ -301,6 +283,24 @@ bool sendPCMediaCmd( uint16_t *pCode)
 #endif
 }
 
+// Currently using PC to relay
+bool sendStatCmd( uint16_t *pCode)
+{
+#ifdef SERVER_ENABLE
+  if(WsPcClientID == 0)
+    return false;
+
+  display.RingIndicator(2);
+  jsonString js("STAT");
+  js.Var("value", pCode[0]);
+  ws.text(WsPcClientID, js.Close());
+  return true;
+#else
+  return false;
+#endif
+}
+
+
 #ifdef SERVER_ENABLE
 
 const char *jsonListCmd[] = {
@@ -313,8 +313,10 @@ const char *jsonListCmd[] = {
   "VOLUME",
   "LED",
   "STATTEMP",
-  "STATSETTEMP", // 9
-  "OUTTEMP",
+  "STATSETTEMP",
+  "OUTTEMP", // 10
+  "ST", // 11 sleeptime
+  "restart",
   NULL
 };
 
@@ -363,6 +365,12 @@ void jsonCallback(int16_t iName, int iValue, char *psValue)
     case 10: // OUTTEMP
       display.m_outTemp = iValue;
       break;
+    case 11: // ST
+      ee.sleepTime = iValue;
+      break;
+    case 12:
+      ESP.restart();
+      break;
   }
 }
 
@@ -377,7 +385,7 @@ uint8_t ssCnt = 58;
 
 void sendState()
 {
-  if (nWsConnected)
+  if (display.m_nWsConnected)
     ws.textAll( dataJson() );
   ssCnt = 58;
 }
@@ -386,6 +394,7 @@ String setupJson()
 {
   jsonString js("setup");
   js.Var("tz", ee.tz);
+  js.Var("st", ee.sleepTime);
   return js.Close();
 }
 
@@ -397,12 +406,12 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
     case WS_EVT_CONNECT:      //client connected
       client->text(setupJson());
       client->text(dataJson());
-      nWsConnected++;
+      display.m_nWsConnected++;
       WsClientID = client->id();
       break;
     case WS_EVT_DISCONNECT:    //client disconnected
-      if (nWsConnected)
-        nWsConnected--;
+      if (display.m_nWsConnected)
+        display.m_nWsConnected--;
       WsClientID = 0;
       if(client->id() == WsPcClientID)
         WsPcClientID = 0;
@@ -429,19 +438,18 @@ void setup()
 {
   ets_printf("Starting\n"); // print over USB
   display.init();
-  startWiFi();
-  if(ee.bBtEnabled == false)
-    btStop();
+  if(ee.bWiFiEnabled)
+    startWiFi();
 
   IrSender.begin(); // Start with IR_SEND_PIN as send pin
   IrSender.enableIROut(SAMSUNG_KHZ); // Call it with 38 kHz just to initialize the values
 
-#ifndef BLE_ENABLE
-  ee.bBtEnabled = false;
-#endif
-
   if(ee.bBtEnabled == false)
     btStop();
+#ifdef BLE_ENABLE
+  if(ee.bBtEnabled)
+    bleKeyboard.begin();
+#endif
 
 #ifdef SERVER_ENABLE
   ws.onEvent(onWsEvent);
