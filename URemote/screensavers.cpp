@@ -23,11 +23,16 @@ void ScreenSavers::select(int n)
 
 void ScreenSavers::run()
 {
-    switch(m_saver)
-    {
-      case SS_Lines: Lines(false); break;
-      case SS_Boing: Boing(false); break;
-    }
+  switch(m_saver)
+  {
+    case SS_Lines: Lines(false); break;
+    case SS_Boing: Boing(false); break;
+  }
+
+  if(display.m_bCharging)
+    tft.drawCircle(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, DISPLAY_WIDTH/2-1, TFT_BLUE);
+  else
+    delay(1);
 }
 
 void ScreenSavers::Lines(bool bInit)
@@ -91,9 +96,6 @@ void ScreenSavers::Lines(bool bInit)
   if(line[next].y1 == DISPLAY_HEIGHT-1 && delta.y1 > 0) delta.y1 = -delta.y1;
   if(line[next].y2 == DISPLAY_HEIGHT-1 && delta.y2 > 0) delta.y2 = -delta.y2;
   idx = next;
-
-  if(display.m_bCharging)
-    tft.drawCircle(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, DISPLAY_WIDTH/2-1, TFT_BLUE);
 }
 
 void ScreenSavers::Boing(bool bInit)
@@ -210,7 +212,4 @@ void ScreenSavers::Boing(bool bInit)
     // Draw at new positions
     tft.drawCircle(ball[i].x, ball[i].y, rad, ball[i].color );
   }
-
-  if(display.m_bCharging)
-    tft.drawCircle(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, DISPLAY_WIDTH/2-1, TFT_BLUE);
 }
