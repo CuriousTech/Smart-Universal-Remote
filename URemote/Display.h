@@ -51,7 +51,6 @@ typedef enum {
 enum Button_Function
 {
   BTF_None,
-  BTF_Text,
   BTF_IR,
   BTF_BLE,
   BTF_Lights,
@@ -67,10 +66,13 @@ enum Button_Function
   BTF_Volts,
   BTF_BattPerc,
   BTF_Temp,
-  BTF_Stat, // stat commands
+  BTF_StatCmd, // stat commands
   BTF_Stat_Temp,
   BTF_Stat_SetTemp,
   BTF_Stat_OutTemp,
+  BTF_GdoDoor,
+  BTF_GdoCar,
+  BTF_GdoCmd,
   BTF_Restart,
 };
 
@@ -79,6 +81,7 @@ enum Button_Function
 #define BF_REPEAT  (1 << 1) // repeatable (hold)
 #define BF_STATE_2 (1 << 2) // tri-state
 #define BF_FIXED_POS (1 << 3)
+#define BF_TEXT   (1<< 4)
 
 // Tile extras
 #define EX_CLOCK  (1 << 1)
@@ -111,7 +114,7 @@ struct Button
 
 struct Tile
 {
-  const char szTitle[16];   // Top text
+  const char *pszTitle;    // Top text
   uint8_t nRow;
   uint8_t Extras;           // See EX_ flags
   uint8_t nSliderType;      // see slider_type
@@ -166,7 +169,15 @@ private:
   void IRAM_ATTR handleTPISR();
   bool m_tpintTriggered;
 
-#define TILES 9
+#define TILES 10
+/*
+Tile layout
+[0]
+[1][x][x][x]
+[2][x][x]
+[3]
+[4]
+*/
   Tile m_tile[TILES] =
   {
     // tile 0 (top/pull-down tile / startup / clock)
@@ -181,10 +192,10 @@ private:
       0,//watchFace,
       {
         { 1, 0, BF_FIXED_POS, BTF_RSSI, "", {0},  26, 26, {0}, (DISPLAY_WIDTH/2 - 26/2), 180 + 26},
-        { 2, 0, BF_FIXED_POS, BTF_Time, "12:00:00 AM", {0}, 120, 32, {0}, DISPLAY_WIDTH/2-56, 50},
-        { 3, 0, BF_FIXED_POS, BTF_Date,  "Jan 01", {0}, 80, 32, {0}, DISPLAY_WIDTH/2-40, 152},
-        { 4, 0, BF_FIXED_POS, BTF_DOW,   "Sun",  {0},  40, 32, {0}, 170, 105},
-        { 5, 0, BF_FIXED_POS, BTF_Volts, "4.20",  {0},  50, 32, {0}, 28, 105},
+        { 2, 0, BF_FIXED_POS|BF_TEXT, BTF_Time, "12:00:00 AM", {0}, 120, 32, {0}, DISPLAY_WIDTH/2-56, 50},
+        { 3, 0, BF_FIXED_POS|BF_TEXT, BTF_Date,  "Jan 01", {0}, 80, 32, {0}, DISPLAY_WIDTH/2-40, 152},
+        { 4, 0, BF_FIXED_POS|BF_TEXT, BTF_DOW,   "Sun",  {0},  40, 32, {0}, 170, 105},
+        { 5, 0, BF_FIXED_POS|BF_TEXT, BTF_Volts, "4.20",  {0},  50, 32, {0}, 28, 105},
       }
     },
     // tile 1 (left-most horizontal tile)
@@ -279,15 +290,31 @@ private:
       0,
       NULL,
       {
-        {1, 0, 0, BTF_Text, "Out:",  {0}, 0, 32, {1,0}},
-        {2, 0, BF_BORDER, BTF_Stat_OutTemp, "",  {0}, 60, 32, {1,0}},
-        {3, 1, 0, BTF_Text, " In:",  {0}, 0, 32, {1,0}},
-        {4, 1, BF_BORDER, BTF_Stat_Temp, "",  {0}, 60, 32, {1,0}},
-        {5, 1, 0, BTF_Stat, NULL, {i_up, 0}, 32, 32, {0}},
-        {6, 2, 0, BTF_Text, "Set:",  {0}, 0, 32, {1,0}},
-        {7, 2, BF_BORDER, BTF_Stat_SetTemp, "",  {0}, 60, 32, {1,0}},
-        {8, 2, 0, BTF_Stat, NULL, {i_dn, 0}, 32, 32, {1}},
-        {9, 3, 0, BTF_Stat, "Fan", {0, 0}, 0, 32, {2}},
+        {1, 0, BF_TEXT, 0, "Out:",  {0}, 0, 32, {1,0}},
+        {2, 0, BF_BORDER|BF_TEXT, BTF_Stat_OutTemp, "",  {0}, 60, 32, {1,0}},
+        {3, 1, BF_TEXT, 0, " In:",  {0}, 0, 32, {1,0}},
+        {4, 1, BF_BORDER|BF_TEXT, BTF_Stat_Temp, "",  {0}, 60, 32, {1,0}},
+        {5, 1, 0, BTF_StatCmd, NULL, {i_up, 0}, 32, 32, {0}},
+        {6, 2, BF_TEXT, 0, "Set:",  {0}, 0, 32, {1,0}},
+        {7, 2, BF_BORDER|BF_TEXT, BTF_Stat_SetTemp, "",  {0}, 60, 32, {1,0}},
+        {8, 2, 0, BTF_StatCmd, NULL, {i_dn, 0}, 32, 32, {1}},
+        {9, 3, 0, BTF_StatCmd, "Fan", {0, 0}, 0, 32, {2}},
+      }
+    },
+    //
+    {
+      "Garage Door",
+      2, // row 2
+      0,
+      SL_None,
+      0,
+      0,
+      0,
+      NULL,
+      {
+        {1, 0, BF_BORDER|BF_TEXT, BTF_GdoDoor, "",  {0}, 98, 32, {1,0}},
+        {2, 1, BF_BORDER|BF_TEXT, BTF_GdoCar, "",  {0}, 98, 32, {1,0}},
+        {3, 2, 0, BTF_GdoCmd, "Open", {0, 0}, 98, 32, {0}},
       }
     },
     //
@@ -361,6 +388,8 @@ public:
   uint16_t m_statTemp;
   uint16_t m_statSetTemp;
   uint16_t m_outTemp;
+  bool m_bGdoDoor;
+  bool m_bGdoCar;
 };
 
 extern Display display;
