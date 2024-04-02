@@ -10,7 +10,7 @@
 enum Saver
 {
   SS_Lines,
-  SS_Boing,
+  SS_Bubbles,
   SS_Count, // Last one
 };
 
@@ -22,12 +22,14 @@ struct Line
   int16_t y2;
 };
 
-struct Ball
+struct Bubble
 {
   int16_t x;
   int16_t y;
-  int16_t dx;
-  int16_t dy;
+  int8_t dx;
+  int8_t dy;
+  int8_t is;
+  int16_t size;
   int16_t color;
 };
 
@@ -35,10 +37,10 @@ struct Ball
 class ScreenSavers
 {
 #define LINES 50
-#define BALLS 8
+#define BUBBLES 10
 #define BUFFER_SIZE 1024
 
-static_assert(sizeof(Ball) * BALLS < BUFFER_SIZE, "m_buffer size too small");
+static_assert(sizeof(Bubble) * BUBBLES < BUFFER_SIZE, "m_buffer size too small");
 static_assert(sizeof(Line) * LINES < BUFFER_SIZE, "m_buffer size too small");
 
 public:
@@ -51,8 +53,8 @@ public:
 
 private:
   void Lines(bool bInit);
-  void Boing(bool bInit);
+  void Bubbles(bool bInit);
+  void initBubble(Bubble& bubble);
 };
-
 
 #endif // SCREENSAVERS_H
