@@ -140,19 +140,27 @@ void sendIR(uint16_t *pCode)
 
 void stopWiFi()
 {
+  if(WiFi.status() != WL_CONNECTED)
+    return;
+
   ee.update();
 #ifdef OTA_ENABLE
   ArduinoOTA.end();
   delay(100); // fix ArduinoOTA crash?
 #endif
-//  WiFi.disconnect();
-//  WiFi.enableAP(false);
-//  WiFi.enableSTA(false);
+
+  display.m_nWsConnected = 0;
+  WsClientID = 0;
+  WsPcClientID = 0;
+  
   WiFi.setSleep(true);
 }
 
 void startWiFi()
 {
+  if(WiFi.status() == WL_CONNECTED)
+    return;
+
   WiFi.setSleep(false);
 
   WiFi.hostname(hostName);
@@ -300,6 +308,22 @@ bool sendStatCmd( uint16_t *pCode)
 #endif
 }
 
+// Currently using PC to relay
+bool sendGdoCmd( uint16_t *pCode)
+{
+#ifdef SERVER_ENABLE
+  if(WsPcClientID == 0)
+    return false;
+
+  display.RingIndicator(2);
+  jsonString js("GDOCMD");
+  js.Var("value", pCode[0]);
+  ws.text(WsPcClientID, js.Close());
+  return true;
+#else
+  return false;
+#endif
+}
 
 #ifdef SERVER_ENABLE
 
@@ -317,6 +341,8 @@ const char *jsonListCmd[] = {
   "OUTTEMP", // 10
   "ST", // 11 sleeptime
   "restart",
+  "GDODOOR",
+  "GDOCAR",
   NULL
 };
 
@@ -347,8 +373,11 @@ void jsonCallback(int16_t iName, int iValue, char *psValue)
 #endif
       break;
     case 5: // PC_REMOTE
-      WsPcClientID = WsClientID;
-      display.notify("PC Connected");
+      if(WsPcClientID == 0)
+      {
+        WsPcClientID = WsClientID;
+        display.notify("PC Connected");
+      }
       break;
     case 6: // VOLUME
       display.setPcVolumeSlider(iValue);
@@ -370,6 +399,12 @@ void jsonCallback(int16_t iName, int iValue, char *psValue)
       break;
     case 12:
       ESP.restart();
+      break;
+    case 13:
+      display.m_bGdoDoor = iValue;
+      break;
+    case 14:
+      display.m_bGdoCar = iValue;
       break;
   }
 }
@@ -414,7 +449,10 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
         display.m_nWsConnected--;
       WsClientID = 0;
       if(client->id() == WsPcClientID)
+      {
         WsPcClientID = 0;
+        display.notify("PC Disconnected");
+      }
       break;
     case WS_EVT_ERROR:    //error was received from the other end
       break;
