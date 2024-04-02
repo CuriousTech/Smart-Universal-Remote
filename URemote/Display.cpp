@@ -18,8 +18,6 @@ TFT_eSPI tft = TFT_eSPI();
 TFT_eSprite sprite = TFT_eSprite(&tft);
 TFT_eSprite sprite2 = TFT_eSprite(&tft);
 
-QMI8658 qmi;
-
 //Lights class
 extern Lights lights;
 
@@ -31,6 +29,7 @@ extern void sendIR(uint16_t *pCode);
 extern bool sendBLE(uint16_t *pCode);
 extern bool sendPCMediaCmd( uint16_t *pCode);
 extern bool sendStatCmd( uint16_t *pCode);
+extern bool sendGdoCmd( uint16_t *pCode);
 extern void consolePrint(String s); // for browser debug
 
 #define I2C_SDA   6
@@ -43,6 +42,7 @@ extern void consolePrint(String s); // for browser debug
 #define BATTV     1
 
 CST816T touch(I2C_SDA, I2C_SCL, TP_RST, TP_INT);
+QMI8658 qmi;
 
 #include "screensavers.h" // comment this line to remove screensavers (saves 3172b PROGMEM, 1072b SRAM)
 #ifdef SCREENSAVERS_H
@@ -68,7 +68,7 @@ void Display::init(void)
   // count tiles, index rows, count columns, format the buttons
   uint8_t nRowIdx = 0;
 
-  for(m_nTileCnt = 0; m_nTileCnt < TILES && (m_tile[m_nTileCnt].Extras || m_tile[m_nTileCnt].szTitle[0] || m_tile[m_nTileCnt].pBGImage); m_nTileCnt++) // count screens
+  for(m_nTileCnt = 0; m_nTileCnt < TILES && (m_tile[m_nTileCnt].Extras || m_tile[m_nTileCnt].pszTitle || m_tile[m_nTileCnt].pBGImage); m_nTileCnt++) // count screens
   {
     if(m_tile[m_nTileCnt].nRow != nRowIdx)
       m_nRowStart[++nRowIdx] = m_nTileCnt;
@@ -79,14 +79,13 @@ void Display::init(void)
   drawTile(m_nCurrTile, true);
   sprite.pushSprite(0, 0); // draw screen 0 on start
 
-  qmi.init();
-
   pinMode(IMU_INT1, INPUT_PULLUP);
   pinMode(IMU_INT2, INPUT_PULLUP);
+  qmi.init();
+  touch.begin();
   attachInterrupt(IMU_INT1, std::bind(&Display::handleISR1, this), FALLING);
   attachInterrupt(IMU_INT2, std::bind(&Display::handleISR2, this), RISING);
 
-  touch.begin();
 
   m_vadc = analogRead(BATTV);
   if(m_vadc > 1890) // probably full and charging
@@ -94,6 +93,8 @@ void Display::init(void)
 
   qmi.setWakeOnMotion(false); // set normal gyro/acc
   qmi.read_gyro_xyz(m_gyroCal);
+
+  randomSeed(micros());
 }
 
 void Display::exitScreensaver()
@@ -106,6 +107,7 @@ void Display::exitScreensaver()
     sprite.pushSprite(0, 0);
     qmi.setWakeOnMotion(false); // enable gyro/acc/temp
     m_int2Triggered = false; // causes an interrupt
+    qmi.read_gyro_xyz(m_gyroCal); // testing this
   }
   m_brightness = ee.brightLevel[1]; // increase brightness for any touch
 }
@@ -125,7 +127,7 @@ void Display::service(void)
 
   if( m_int2Triggered) // set for IMU WOM
   {
-//    ets_printf("INT2\n");
+    ets_printf("INT2\n");
     m_int2Triggered = false;
     m_backlightTimer = DISPLAY_TIMEOUT;
     if( m_brightness < ee.brightLevel[1] )
@@ -135,17 +137,14 @@ void Display::service(void)
   if( m_tpintTriggered) // may be used later
   {
     m_tpintTriggered = false;
-//    ets_printf("TP_INT\n");
+    ets_printf("TP_INT\n");
   }
 
   if(m_bSleeping)
   {
-    if( snooze(10000) )
+    if( snooze(30000) )
     {
       endSleep();
-      tft.init(); // reset the display
-      tft.setSwapBytes(true);
-      tft.setTextPadding(8); 
       m_backlightTimer = DISPLAY_TIMEOUT;
       if( m_brightness < ee.brightLevel[1] )
         exitScreensaver();
@@ -295,12 +294,21 @@ void Display::service(void)
   if(ee.bWiFiEnabled && (year() < 2024 || WiFi.status() != WL_CONNECTED)) // Do a connecting effect
   {
     static int16_t ang;
-    for(uint8_t i = 0; i < 8; i++)
+    uint16_t ang2;
+    static uint8_t rgb[3] = {32, 128, 128};
+
+    ang2 = ang;
+    for(uint8_t i = 0; i < 12; i++)
     {
-      tft.drawArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 120, 117, ang, ang + 10, TFT_WHITE, TFT_BLACK, false);
-      ang += 30;
-      ang %= 360;
-      tft.drawArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 120, 117, ang + 90, ang + 100, (WiFi.status() == WL_CONNECTED) ? TFT_GREEN:TFT_RED, TFT_BLACK, false);
+      tft.drawArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 120, 117, ang2, ang2 + 5, (WiFi.status() == WL_CONNECTED) ? tft.color565(rgb[0], rgb[1], rgb[2]):TFT_RED, TFT_BLACK, false);
+      ang2 += 30;
+      ang2 %= 360;
+    }
+    ++ang %= 360;
+    for(uint8_t i = 0; i < 3; i++)
+    {
+      rgb[i] += random(-3, 6);
+      rgb[i] = (uint8_t)constrain(rgb[i], 2, 255);
     }
   }
 }
@@ -330,7 +338,6 @@ void Display::endSleep()
     startWiFi();
   if(ee.bBtEnabled)
     btStart();
-  qmi.init();
 }
 
 // A tile for playing around
@@ -347,14 +354,17 @@ void Display::testTile()
   qmi.read_gyro_xyz(gyro);
 
   if(gyro[0] == 0)
+  {
     qmi.enableSensors(7);
+    qmi.read_gyro_xyz(m_gyroCal);
+  }
 
   sprite.drawArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 111, 108, (int)gyroPos[2], ((int)gyroPos[2]+4) % 360, TFT_BLACK, TFT_BLACK, false);
   sprite.fillCircle(gyroPos[0], gyroPos[1], 8, TFT_BLACK );
 
   gyroPos[0] += ((gyro[0]-m_gyroCal[0]) / 100);
   gyroPos[1] += ((gyro[1]-m_gyroCal[1]) / 100);
-  gyroPos[2] -= ((gyro[2]-m_gyroCal[2]) / 250);
+  gyroPos[2] -= ((gyro[2]-m_gyroCal[2]) / 280);
 
   gyroPos[0] = constrain(gyroPos[0], 0, 240);
   gyroPos[1] = constrain(gyroPos[1], 0, 240);
@@ -389,7 +399,7 @@ void Display::swipeTile()
 
       m_nCurrTile--;
       drawTile(m_nCurrTile, true);
-      for(int16_t i = -DISPLAY_WIDTH; i <= 0; i += 8)
+      for(int16_t i = -DISPLAY_WIDTH; i <= 0; i += 12)
       {
          // Push a windowed area of the sprite to the TFT at tx, ty
         //  bool     pushSprite(int32_t tx, int32_t ty, int32_t sx, int32_t sy, int32_t sw, int32_t sh);
@@ -409,7 +419,7 @@ void Display::swipeTile()
 
       m_nCurrTile++;
       drawTile(m_nCurrTile, true);
-      for(int16_t i = DISPLAY_WIDTH; i >= 0; i -= 8)
+      for(int16_t i = DISPLAY_WIDTH; i >= 0; i -= 12)
       {
         sprite2.pushSprite(i - DISPLAY_WIDTH, 0);
         sprite.pushSprite(i, 0);
@@ -426,7 +436,7 @@ void Display::swipeTile()
       sprite.pushToSprite(&sprite2, 0, 0); // copy to temp sprite
 
       drawTile(m_nCurrTile, true);
-      for(int16_t i = -DISPLAY_HEIGHT; i <= 0; i += 8)
+      for(int16_t i = -DISPLAY_HEIGHT; i <= 0; i += 12)
       {
         sprite2.pushSprite(0, i + DISPLAY_HEIGHT);
         sprite.pushSprite(0, i);
@@ -442,7 +452,7 @@ void Display::swipeTile()
       }
       sprite.pushToSprite(&sprite2, 0, 0); // copy to temp sprite
       drawTile(m_nCurrTile, true);
-      for(int16_t i = DISPLAY_HEIGHT; i >= 0; i -= 8)
+      for(int16_t i = DISPLAY_HEIGHT; i >= 0; i -= 12)
       {
         sprite2.pushSprite(0, 0, 0, DISPLAY_HEIGHT - i, DISPLAY_WIDTH, i); // TFT_eSPI crops so this is no faster
         sprite.pushSprite(0, i, 0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT - i);
@@ -498,6 +508,7 @@ void Display::oneSec()
       return;
     }
   }
+  
   static bool bQDone = false;
   // A query or command is done
   if(lights.checkStatus() == LI_Done)
@@ -507,7 +518,7 @@ void Display::oneSec()
       bQDone = true;
       // Find SL_Lights screen
       uint8_t nLi = 0;
-      while(m_tile[nLi].nSliderType != SL_Lights && (m_tile[nLi].szTitle[0] || m_tile[nLi].Extras) )
+      while(m_tile[nLi].nSliderType != SL_Lights && (m_tile[nLi].pszTitle || m_tile[nLi].Extras) )
         nLi++;
 
       Tile& pTile = m_tile[nLi];
@@ -570,7 +581,7 @@ void Display::scrollPage(uint8_t nTile, int16_t nDelta)
     return;
 
   uint8_t nViewSize = DISPLAY_HEIGHT;
-  if(pTile.szTitle[0])
+  if(pTile.pszTitle && pTile.pszTitle[0])
     nViewSize -= TITLE_HEIGHT;
 
   if(pTile.Extras & EX_NOTIF )
@@ -652,7 +663,7 @@ void Display::formatButtons(Tile& pTile)
   pTile.nPageHeight = nRows * (nBtnH + BORDER_SPACE) - BORDER_SPACE;
 
   uint8_t nViewSize = DISPLAY_HEIGHT;
-  if(pTile.szTitle[0])                                              // shrink view by title height
+  if(pTile.pszTitle && pTile.pszTitle[0])                           // shrink view by title height
     nViewSize -= TITLE_HEIGHT;
 
   pTile.nScrollIndex = 0;
@@ -660,7 +671,7 @@ void Display::formatButtons(Tile& pTile)
   // ScrollIndex is added to button Y on draw and detect
   if(!(pTile.Extras & EX_NOTIF) && pTile.nPageHeight <= nViewSize) // Center smaller page
     pTile.nScrollIndex = -(nViewSize - pTile.nPageHeight) / 2;
-  else if(pTile.szTitle[0])                                          // Just offset by title height if too large
+  else if(pTile.pszTitle && pTile.pszTitle[0])                       // Just offset by title height if too large
     pTile.nScrollIndex -= (TITLE_HEIGHT + BORDER_SPACE);             // down past title
 
   for(btnIdx = 0; btnIdx < btnCnt; btnIdx++ )
@@ -695,11 +706,11 @@ void Display::drawTile(int8_t nTile, bool bFirst)
   if(pTile.Extras & EX_CLOCK) // draw clock over other objects
     drawClock();
 
-  if(pTile.szTitle[0])
+  if(pTile.pszTitle && pTile.pszTitle[0])
   {
     sprite.fillRect(0, 0, DISPLAY_WIDTH, 40, TFT_BLACK); // cover any scrolled buttons/text
     sprite.setTextColor(rgb16(16,63,0), TFT_BLACK );
-    sprite.drawString(pTile.szTitle, DISPLAY_WIDTH/2, 27);
+    sprite.drawString(pTile.pszTitle, DISPLAY_WIDTH/2, 27);
   }
 
   if( pTile.nSliderType )
@@ -717,7 +728,7 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed)
     colorBg = TFT_DARKCYAN;
   }
 
-  String s = "";
+  String s = pBtn->pszText;
 
   switch(pBtn->nFunction)
   {
@@ -780,6 +791,15 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed)
     case BTF_Stat_OutTemp:
       s = String((float)m_outTemp/10, 1);
       break;
+    case BTF_GdoDoor:
+      s = m_bGdoDoor ? "GD Open":"GD Closed";
+      break;
+    case BTF_GdoCar:
+      s = m_bGdoCar ? "Car In":"Car Out";
+      break;
+    case BTF_GdoCmd:
+      s = m_bGdoDoor ? "Open":"Close";
+      break;
     case BTF_Lights:
       if(lights.getSwitch(pBtn->ID)) // light is on
         pBtn->flags |= BF_STATE_2;
@@ -798,9 +818,6 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed)
       else
         pBtn->flags &= ~BF_STATE_2;      
       break;
-    case BTF_Text:
-      colorBg = TFT_BLACK;
-      break;
   }
 
   int16_t yOffset = pBtn->y;
@@ -815,19 +832,17 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed)
     sprite.pushImage(pBtn->x, yOffset, pBtn->w, pBtn->h, pBtn->pIcon[nState]);
   else if(pBtn->flags & BF_BORDER) // bordered text item
     sprite.drawRoundRect(pBtn->x, yOffset, pBtn->w, pBtn->h, 5, colorBg);
-  else if(s.length() == 0 && pBtn->nFunction != BTF_Text ) // if no image, or no image for state 2, and not just text, fill with a color
+  else if(!(pBtn->flags & BF_TEXT) ) // if no image, or no image for state 2, and not just text, fill with a color
     sprite.fillRoundRect(pBtn->x, yOffset, pBtn->w, pBtn->h, 5, colorBg);
 
-  if(s.length()) // button text was replaced
+  if(s.length())
   {
-    sprite.setTextColor(TFT_WHITE, TFT_BLACK);
+    if(pBtn->flags & BF_TEXT) // text only
+      sprite.setTextColor(TFT_WHITE, TFT_BLACK);
+    else
+      sprite.setTextColor(TFT_CYAN, colorBg);
     sprite.drawString( s, pBtn->x + (pBtn->w / 2), yOffset + (pBtn->h / 2) - 2 );
-  }
-  else if(pBtn->pszText && pBtn->pszText[0])
-  {
-    sprite.setTextColor(TFT_CYAN, colorBg);
-    sprite.drawString( pBtn->pszText, pBtn->x + (pBtn->w / 2), yOffset + (pBtn->h / 2) - 2 );
-  }
+  }  
 }
 
 // called when button is activated
@@ -890,9 +905,14 @@ void Display::buttonCmd(Button *pBtn, bool bRepeat)
         notify("PC command failed");
       break;
 
-    case BTF_Stat:
+    case BTF_StatCmd:
       if( !sendStatCmd(pBtn->code) )
         notify("Stat command failed");
+      break;
+
+    case BTF_GdoCmd:
+      if( !sendGdoCmd(pBtn->code) )
+        notify("GDO command failed");
       break;
 
     case BTF_Clear:
@@ -903,12 +923,11 @@ void Display::buttonCmd(Button *pBtn, bool bRepeat)
 
 void Display::sliderCmd(uint8_t nType, uint8_t nOldVal, uint8_t nNewVal)
 {
-
   uint16_t code[4];
 
   switch( nType)
   {
-    case SL_Lights: // light dimmer (-1 = last activa)
+    case SL_Lights: // light dimmer (-1 = last active)
       lights.setSwitch( -1, true, nNewVal);
       break;
     case SL_PC: // PC volume
@@ -1050,7 +1069,8 @@ void Display::drawClock()
   const float x = DISPLAY_WIDTH/2; // center
   const float y = DISPLAY_HEIGHT/2;
 
-  sprite.drawSmoothCircle(x, y, x-1, TFT_WHITE, TFT_BLACK); // draw outer ring
+  if(ee.bWiFiEnabled && (year() < 2024 || WiFi.status() != WL_CONNECTED)); // Still connecting
+  else sprite.drawSmoothCircle(x, y, x-1, m_bCharging ? TFT_BLUE : TFT_WHITE, TFT_BLACK); // draw outer ring
 
   for(uint16_t i = 0; i < 360; i += 6) // drawing the watchface instead of an image saves 9% of PROGMEM
   {
