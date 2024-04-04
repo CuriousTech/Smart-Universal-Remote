@@ -29,8 +29,10 @@ public:
   int8_t   tz = -5;                 // local timezone
   bool     bBtEnabled = false;
   bool     bWiFiEnabled = true;
+  uint8_t  res;
   uint8_t  lightIp[4] = {192,168,31,73}; // Device to get all lights/switches/dimmers IP list
   uint8_t  brightLevel[2] = {30, 180}; // brightness {dim, highest}
+  uint16_t ssTime = 90; // timer for screensaver
   uint16_t sleepTime = 5*60; // timer for sleep mode
 
 #define EE_LIGHT_CNT 18
@@ -40,7 +42,7 @@ public:
     {"Basement", 0},
     {},
   };
-  uint8_t  reserved[64];           // Note: To force an EEPROM update, just subtract 1 byte and flash again
+  uint8_t  reserved[62];           // Note: To force an EEPROM update, just subtract 1 byte and flash again
   uint8_t  end;
 }; // 512 bytes
 
