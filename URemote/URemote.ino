@@ -334,12 +334,14 @@ const char *jsonListCmd[] = {
   "REP",
   "RX",
   "PC_REMOTE", // PC commands client
-  "VOLUME",
+  "PC_VOLUME",
   "LED",
   "STATTEMP",
   "STATSETTEMP",
-  "OUTTEMP", // 10
-  "ST", // 11 sleeptime
+  "STATFAN", // 10
+  "OUTTEMP",
+  "ST", // sleeptime
+  "SS", // screensaver time
   "restart",
   "GDODOOR",
   "GDOCAR",
@@ -379,8 +381,8 @@ void jsonCallback(int16_t iName, int iValue, char *psValue)
         display.notify("PC Connected");
       }
       break;
-    case 6: // VOLUME
-      display.setPcVolumeSlider(iValue);
+    case 6: // PC_VOLUME
+      display.setSliderValue(SL_PC, iValue);
       break;
     case 7: // LED
       digitalWrite(IR_SEND_PIN, iValue ? HIGH:LOW);
@@ -391,19 +393,25 @@ void jsonCallback(int16_t iName, int iValue, char *psValue)
     case 9: // STATSETTEMP
       display.m_statSetTemp = iValue;
       break;
-    case 10: // OUTTEMP
+    case 10: // STATFAN
+      display.m_statFan = iValue;
+      break;
+    case 11: // OUTTEMP
       display.m_outTemp = iValue;
       break;
-    case 11: // ST
+    case 12: // ST
       ee.sleepTime = iValue;
       break;
-    case 12:
-      ESP.restart();
-      break;
-    case 13:
-      display.m_bGdoDoor = iValue;
+    case 13: // SS
+      ee.ssTime = iValue;
       break;
     case 14:
+      ESP.restart();
+      break;
+    case 15:
+      display.m_bGdoDoor = iValue;
+      break;
+    case 16:
       display.m_bGdoCar = iValue;
       break;
   }
@@ -430,6 +438,7 @@ String setupJson()
   jsonString js("setup");
   js.Var("tz", ee.tz);
   js.Var("st", ee.sleepTime);
+  js.Var("ss", ee.ssTime);
   return js.Close();
 }
 
