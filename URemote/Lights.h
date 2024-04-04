@@ -28,7 +28,6 @@ public:
   int checkStatus();
 
   bool getSwitch(int8_t nSwitch);
-  uint8_t getLevel(int8_t nSwitch);
 
 private:
   void _onConnect(AsyncClient* client);
