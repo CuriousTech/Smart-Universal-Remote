@@ -86,20 +86,19 @@ void Display::init(void)
   attachInterrupt(IMU_INT1, std::bind(&Display::handleISR1, this), FALLING);
   attachInterrupt(IMU_INT2, std::bind(&Display::handleISR2, this), RISING);
 
-
   m_vadc = analogRead(BATTV);
   if(m_vadc > 1890) // probably full and charging
     m_bCharging = true;
 
-  qmi.setWakeOnMotion(false); // set normal gyro/acc
-  qmi.read_gyro_xyz(m_gyroCal);
+  qmi.setWakeOnMotion(true); // set WOM (sets acc values)
+  qmi.setWakeOnMotion(false); // enable acc/temp
 
   randomSeed(micros());
 }
 
 void Display::exitScreensaver()
 {
-  m_backlightTimer = DISPLAY_TIMEOUT; // reset timer for any touch
+  m_backlightTimer = ee.ssTime; // reset timer for any touch
 
   if( m_brightness == ee.brightLevel[0] ) // screensaver active
   {
@@ -107,7 +106,6 @@ void Display::exitScreensaver()
     sprite.pushSprite(0, 0);
     qmi.setWakeOnMotion(false); // enable gyro/acc/temp
     m_int2Triggered = false; // causes an interrupt
-    qmi.read_gyro_xyz(m_gyroCal); // testing this
   }
   m_brightness = ee.brightLevel[1]; // increase brightness for any touch
 }
@@ -121,7 +119,7 @@ void Display::service(void)
   {
     m_int1Triggered = false;
     ets_printf("INT1\n");
-    m_backlightTimer = DISPLAY_TIMEOUT; // reset timer for any touch
+    m_backlightTimer = ee.ssTime; // reset timer for any touch
 //    endSleep();
   }
 
@@ -129,7 +127,7 @@ void Display::service(void)
   {
     ets_printf("INT2\n");
     m_int2Triggered = false;
-    m_backlightTimer = DISPLAY_TIMEOUT;
+    m_backlightTimer = ee.ssTime;
     if( m_brightness < ee.brightLevel[1] )
       exitScreensaver();
   }
@@ -145,7 +143,7 @@ void Display::service(void)
     if( snooze(30000) )
     {
       endSleep();
-      m_backlightTimer = DISPLAY_TIMEOUT;
+      m_backlightTimer = ee.ssTime;
       if( m_brightness < ee.brightLevel[1] )
         exitScreensaver();
     }
@@ -210,7 +208,7 @@ void Display::service(void)
       bScrolling = false;
       touchStartMS = millis();
 
-      m_backlightTimer = DISPLAY_TIMEOUT; // reset timer for any touch
+      m_backlightTimer = ee.ssTime; // reset timer for any touch
   
       if( m_brightness < ee.brightLevel[1] )
       {
@@ -311,6 +309,33 @@ void Display::service(void)
       rgb[i] = (uint8_t)constrain(rgb[i], 2, 255);
     }
   }
+
+  static uint8_t nAccDly = 30;
+  static uint8_t nAccCal = 200;
+
+  if(m_bSleeping == false && --nAccDly == 0)
+  {
+    nAccDly = 20;
+    qmi.read_acc_xyz(m_acc);
+
+    if(nAccCal) // calibrate for the first few ms
+    {
+      static float accAvg[3];
+      for(uint8_t i = 0; i < 3; i++)
+      {
+        accAvg[i] += m_acc[i];
+      }
+      if(--nAccCal == 0)
+      {
+        m_accCal[0] = accAvg[0] / 200;
+        m_accCal[1] = accAvg[1] / 200;
+        m_accCal[2] = accAvg[2] / 200;
+      }
+    }
+  }
+
+  if( (m_acc[0] - m_accCal[0]) < -2.0) // tilted up
+    m_backlightTimer = ee.ssTime; // reset timer when being held
 }
 
 void Display::startSleep()
@@ -343,40 +368,20 @@ void Display::endSleep()
 // A tile for playing around
 void Display::testTile()
 {
-  static uint8_t dly = 8;
-  if(--dly)
+  static uint8_t nDly = 8;
+  if(--nDly)
     return;
-  dly = 8;
+  nDly = 8;
 
-  static float gyroPos[3] = {120, 120, 180};
-  float gyro[3];
+  static uint16_t x = DISPLAY_WIDTH/2;
+  static uint16_t y = DISPLAY_HEIGHT/2;
 
-  qmi.read_gyro_xyz(gyro);
+  sprite.fillCircle(x, y, 6, TFT_BLACK );
 
-  if(gyro[0] == 0)
-  {
-    qmi.enableSensors(7);
-    qmi.read_gyro_xyz(m_gyroCal);
-  }
+  y = DISPLAY_HEIGHT/2 + (m_acc[0] - m_accCal[0]) * 32;
+  x = DISPLAY_WIDTH/2 - (m_acc[1] - m_accCal[1]) * 32;
 
-  sprite.drawArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 111, 108, (int)gyroPos[2], ((int)gyroPos[2]+4) % 360, TFT_BLACK, TFT_BLACK, false);
-  sprite.fillCircle(gyroPos[0], gyroPos[1], 8, TFT_BLACK );
-
-  gyroPos[0] += ((gyro[0]-m_gyroCal[0]) / 100);
-  gyroPos[1] += ((gyro[1]-m_gyroCal[1]) / 100);
-  gyroPos[2] -= ((gyro[2]-m_gyroCal[2]) / 280);
-
-  gyroPos[0] = constrain(gyroPos[0], 0, 240);
-  gyroPos[1] = constrain(gyroPos[1], 0, 240);
-  if(gyroPos[2] < 0)  gyroPos[2] += 360;
-  if(gyroPos[2] >= 360)  gyroPos[2] -= 360;
-
-  uint16_t r = gyroPos[2];
-  uint16_t y = gyroPos[1];
-  uint16_t x = gyroPos[0];
-
-  sprite.fillCircle(x, y, 8, TFT_BLUE );
-  sprite.drawArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 111, 108, (int)gyroPos[2], ((int)gyroPos[2]+4) % 360, TFT_RED, TFT_BLACK, false);
+  sprite.fillCircle(x, y, 6, TFT_WHITE );
   sprite.pushSprite(0, 0);
 }
 
@@ -782,6 +787,12 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed)
     case BTF_Temp:
       s = String(qmi.readTemp(), 1)+"F";
       break;
+    case BTF_Stat_Fan:
+      if(m_statFan)
+        pBtn->flags |= BF_STATE_2;
+      else
+        pBtn->flags &= ~BF_STATE_2;
+      break;
     case BTF_Stat_Temp:
       s = String((float)m_statTemp/10, 1);
       break;
@@ -798,7 +809,7 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed)
       s = m_bGdoCar ? "Car In":"Car Out";
       break;
     case BTF_GdoCmd:
-      s = m_bGdoDoor ? "Open":"Close";
+      s = m_bGdoDoor ? "Close":"Open";
       break;
     case BTF_Lights:
       if(lights.getSwitch(pBtn->ID)) // light is on
@@ -906,6 +917,7 @@ void Display::buttonCmd(Button *pBtn, bool bRepeat)
       break;
 
     case BTF_StatCmd:
+    case BTF_Stat_Fan:
       if( !sendStatCmd(pBtn->code) )
         notify("Stat command failed");
       break;
@@ -941,6 +953,8 @@ void Display::sliderCmd(uint8_t nType, uint8_t nOldVal, uint8_t nNewVal)
 // Pop uup a notification + add to notes list
 void Display::notify(char *pszNote)
 {
+  if(m_tile[m_nCurrTile].Extras & EX_TEST) // direct tft writes
+    return;
   if( m_brightness < ee.brightLevel[1] ) // make it bright if not
     exitScreensaver();
 
@@ -1043,7 +1057,7 @@ void Display::btnRSSI(Button *pBtn)
   static int16_t rssi[RSSI_CNT];
   static uint8_t rssiIdx = 0;
 
-  rssi[rssiIdx] = WiFi.RSSI();
+  rssi[rssiIdx] = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : 0;
   if(++rssiIdx >= RSSI_CNT) rssiIdx = 0;
 
   int16_t rssiAvg = 0;
@@ -1075,8 +1089,8 @@ void Display::drawClock()
   for(uint16_t i = 0; i < 360; i += 6) // drawing the watchface instead of an image saves 9% of PROGMEM
   {
     uint16_t xH,yH,xH2,yH2;
-    cspoint(xH, yH, x, y, i, 114); // outer edge
-    cspoint(xH2, yH2, x, y, i, (i%30) ? 103:94); // 60 ticks/12 longer ticks
+    cspoint(xH, yH, x, y, i, 116); // outer edge
+    cspoint(xH2, yH2, x, y, i, (i%30) ? 105:96); // 60 ticks/12 longer ticks
     sprite.drawWideLine(xH, yH, xH2, yH2, (i%30) ? 2:3, TFT_SILVER, TFT_BLACK); // 12 wider ticks
   }
 
@@ -1088,7 +1102,7 @@ void Display::drawClock()
   float a = (hour() + (minute() * 0.00833) ) * 30;
   cspoint(xH, yH, x, y, a, 64);
   cspoint(xM, yM, x, y, minute() * 6, 87);
-  cspoint(xS, yS, x, y, second() * 6, 94);
+  cspoint(xS, yS, x, y, second() * 6, 96);
   cspoint(xS2, yS2, x, y, (second()+30) * 6, 24);
 
   sprite.drawWedgeLine(x, y, xH, yH, 8, 2, TFT_LIGHTGREY, TFT_BLACK); // hour hand
@@ -1106,11 +1120,11 @@ void Display::cspoint(uint16_t &x2, uint16_t &y2, uint16_t x, uint16_t y, float 
 }
 
 // update the PC volume slider
-void Display::setPcVolumeSlider(int8_t iValue)
+void Display::setSliderValue(uint8_t st, int8_t iValue)
 {
   uint8_t i;
   for(i = 0; i < m_nTileCnt; i++)
-    if(m_tile[i].nSliderType == SL_PC)
+    if(m_tile[i].nSliderType == st)
       break;
   if(i < m_nTileCnt)
     m_tile[i].nSliderValue = iValue;
