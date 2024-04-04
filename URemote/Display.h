@@ -9,7 +9,6 @@
 
 #define DISPLAY_WIDTH 240
 #define DISPLAY_HEIGHT 240
-#define DISPLAY_TIMEOUT  90  // 90 seconds
 
 // todo: quick fix
 #ifndef _IR_PROTOCOL_H
@@ -69,6 +68,7 @@ enum Button_Function
   BTF_StatCmd, // stat commands
   BTF_Stat_Temp,
   BTF_Stat_SetTemp,
+  BTF_Stat_Fan,
   BTF_Stat_OutTemp,
   BTF_GdoDoor,
   BTF_GdoCar,
@@ -137,7 +137,7 @@ public:
   void service(void);
   void exitScreensaver(void);
   void notify(char *pszNote);
-  void setPcVolumeSlider(int8_t iValue);
+  void setSliderValue(uint8_t st, int8_t iValue);
   void RingIndicator(uint8_t n);
 
 private:
@@ -290,15 +290,16 @@ Tile layout
       0,
       NULL,
       {
-        {1, 0, BF_TEXT, 0, "Out:",  {0}, 0, 32, {1,0}},
+        {1, 0, BF_TEXT, 0, "Out:",  {0}, 0, 32, {0}},
         {2, 0, BF_BORDER|BF_TEXT, BTF_Stat_OutTemp, "",  {0}, 60, 32, {1,0}},
-        {3, 1, BF_TEXT, 0, " In:",  {0}, 0, 32, {1,0}},
-        {4, 1, BF_BORDER|BF_TEXT, BTF_Stat_Temp, "",  {0}, 60, 32, {1,0}},
-        {5, 1, 0, BTF_StatCmd, NULL, {i_up, 0}, 32, 32, {0}},
-        {6, 2, BF_TEXT, 0, "Set:",  {0}, 0, 32, {1,0}},
-        {7, 2, BF_BORDER|BF_TEXT, BTF_Stat_SetTemp, "",  {0}, 60, 32, {1,0}},
-        {8, 2, 0, BTF_StatCmd, NULL, {i_dn, 0}, 32, 32, {1}},
-        {9, 3, 0, BTF_StatCmd, "Fan", {0, 0}, 0, 32, {2}},
+        {3, 0, BF_TEXT, 0, "",  {0}, 32, 32, {0}}, // spacer
+        {4, 1, BF_TEXT, 0, " In:",  {0}, 38, 32, {1,0}},
+        {5, 1, BF_BORDER|BF_TEXT, BTF_Stat_Temp, "",  {0}, 60, 32, {1,0}},
+        {6, 1, BF_REPEAT, BTF_StatCmd, NULL, {i_up, 0}, 32, 32, {0}},
+        {7, 2, BF_TEXT, 0, "Set:",  {0}, 0, 32, {1,0}},
+        {8, 2, BF_BORDER|BF_TEXT, BTF_Stat_SetTemp, "",  {0}, 60, 32, {1,0}},
+        {9, 2, BF_REPEAT, BTF_StatCmd, NULL, {i_dn, 0}, 32, 32, {1}},
+        {10, 3, 0, BTF_Stat_Fan, "Fan", {0, 0}, 0, 32, {2}},
       }
     },
     //
@@ -364,18 +365,18 @@ Tile layout
     },
   };
 
-  uint16_t m_backlightTimer = DISPLAY_TIMEOUT; // backlight timer, seconds
-  uint8_t m_bright; // current brightness
-  uint8_t m_nTileCnt;
-  int8_t m_nCurrTile; // start screen
+  uint16_t m_backlightTimer = 90; // backlight/screensaver timer, seconds
+  uint8_t  m_bright; // current brightness
+  uint8_t  m_nTileCnt;
+  int8_t   m_nCurrTile; // start screen
   uint32_t m_nDispFreeze;
-  uint8_t m_nRowStart[TILES]; // index of screen at row
-  uint8_t m_nColCnt[TILES]; // column count for each row of screens
+  uint8_t  m_nRowStart[TILES]; // index of screen at row
+  uint8_t  m_nColCnt[TILES]; // column count for each row of screens
   uint16_t m_vadc;
-  float m_gyroCal[3];
-
+  float    m_acc[3];
+  float    m_accCal[3];
   uint16_t m_sleepTimer;
-  bool m_bSleeping;
+  bool     m_bSleeping;
 
 #define NOTE_CNT 10
   char *m_pszNotifs[NOTE_CNT + 1];
@@ -387,6 +388,7 @@ public:
 
   uint16_t m_statTemp;
   uint16_t m_statSetTemp;
+  bool m_statFan;
   uint16_t m_outTemp;
   bool m_bGdoDoor;
   bool m_bGdoCar;
