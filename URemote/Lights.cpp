@@ -2,6 +2,9 @@
 // lights/dimmers/switches control for CuriousTech/Dimmer repo
 
 #include "Lights.h"
+#include "Display.h"
+
+extern Display display;
 
 Lights::Lights()
 {
@@ -52,12 +55,6 @@ bool Lights::getSwitch(int8_t nSwitch)
 {
   if(nSwitch < 1) return false; // 1 = first
   return m_bOn[nSwitch - 1][0];
-}
-
-uint8_t Lights::getLevel(int8_t nSwitch)
-{
-  if(nSwitch < 1) return false;
-  return m_nLevel[nSwitch - 1];
 }
 
 bool Lights::send(IPAddress serverIP, uint16_t port, const char *pURI)
@@ -213,6 +210,7 @@ void Lights::callback(int8_t iName, char *pName, int32_t iValue, char *psValue)
       break;
     case 3: // level
       m_nLevel[m_nSwitch] = iValue;
+      display.setSliderValue(SL_Lights, m_nLevel[m_nSwitch] );
       break;
   }
 }
