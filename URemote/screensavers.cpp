@@ -5,28 +5,27 @@
 extern TFT_eSPI tft;
 extern TFT_eSprite sprite;
 
+extern void consolePrint(String s); // for browser debug
+
 void ScreenSavers::select(int n)
 {
   m_saver = n;
   randomSeed(micros());
-
-  switch(m_saver)
-  {
-    case SS_Lines:
-        Lines(true);
-        break;
-    case SS_Bubbles:
-        Bubbles(true);
-        break;
-  }
 }
 
 void ScreenSavers::run()
 {
   switch(m_saver)
   {
-    case SS_Lines: Lines(false); break;
-    case SS_Bubbles: Bubbles(false); break;
+    case SS_Lines:
+      Lines();
+      break;
+    case SS_Bubbles:
+      Bubbles();
+      break;
+    case SS_Starfield:
+      Starfield();
+      break;
   }
 
   if(display.m_bCharging)
@@ -35,21 +34,23 @@ void ScreenSavers::run()
     delay(1);
 }
 
-void ScreenSavers::Lines(bool bInit)
+void ScreenSavers::Lines()
 {
-  static Line *line = (Line *)m_buffer, delta;
+  Line *line = (Line *)m_buffer;
+  static Line delta;
   uint16_t color;
   static int16_t rgb[3] = {40,40,40};
   static int8_t rgbd[3] = {0};
   static uint8_t idx;
 
-  if(bInit)
+  static bool bInit = false;
+  if(!bInit)
   {
+    bInit = true;
     tft.fillScreen(TFT_BLACK);
     memset(line, 0, sizeof(Line) * LINES);
     memset(&delta, 1, sizeof(delta));
     idx = 0;
-    return;
   }
 
   static int8_t dly = 0;
@@ -99,32 +100,33 @@ void ScreenSavers::Lines(bool bInit)
   idx = next;
 }
 
-void ScreenSavers::Bubbles(bool bInit)
+void ScreenSavers::Bubbles()
 {
-  static Bubble *bubble = (Bubble *)m_buffer;
+  Bubble *bubble = (Bubble *)m_buffer;
   static uint8_t skipper = 4;
 
-  if(bInit)
+  static bool bInit = false;
+  if(!bInit)
   {
+    bInit = true;
     tft.fillScreen(TFT_BLACK);
     for(uint8_t i = 0; i < BUBBLES; i++)
     {
-      initBubble(bubble[i]);
+      resetBubble(bubble[i]);
     }
-    return;
   }
 
   if(--skipper) // slow it down by x*loop delay of 1ms
     return;
-  skipper = 12;
+  skipper = 16;
 
   // Erase last bubble
   for(uint8_t i = 0; i < BUBBLES; i++)
   {
     tft.drawCircle(bubble[i].x, bubble[i].y, bubble[i].size, TFT_BLACK );
-    if(bubble[i].size > random(25, 8))
+    if(bubble[i].size > random(24, 14))
     {
-      initBubble(bubble[i]);
+      resetBubble(bubble[i]);
     }
   }
 
@@ -140,7 +142,7 @@ void ScreenSavers::Bubbles(bool bInit)
   }
 }
 
-void ScreenSavers::initBubble(Bubble& bubble)
+void ScreenSavers::resetBubble(Bubble& bubble)
 {
   const uint16_t palette[] = {TFT_MAROON,TFT_PURPLE,TFT_OLIVE,TFT_LIGHTGREY,
         TFT_DARKGREY,TFT_BLUE,TFT_GREEN,TFT_CYAN,TFT_RED,TFT_MAGENTA,
@@ -149,9 +151,46 @@ void ScreenSavers::initBubble(Bubble& bubble)
 
   bubble.x = (int16_t)random(2, DISPLAY_WIDTH - 2);
   bubble.y = (int16_t)random(2, DISPLAY_WIDTH - 2);
-  bubble.dx = (int8_t)random(-2, 4);
-  bubble.dy = (int8_t)random(-2, 4);
+  bubble.dx = (int8_t)random(-3, 6);
+  bubble.dy = (int8_t)random(-3, 6);
   bubble.size = 1;
-  bubble.is = random(1, 3);
+  bubble.is = random(1, 4);
   bubble.color = palette[ random(0, sizeof(palette) / sizeof(uint16_t) ) ];
+}
+
+void ScreenSavers::Starfield()
+{
+  Star *star = (Star *)m_buffer;
+
+  static bool bInit = false;
+  if(!bInit)
+  {
+    bInit = true;
+    tft.fillScreen(TFT_BLACK);
+    for(uint8_t i = 0; i < STARS; i++)
+      resetStar(star[i]);
+  }
+
+  for(uint8_t i = 0; i < STARS; i++)
+  {
+    tft.drawPixel((uint8_t)star[i].x, (uint8_t)star[i].y, TFT_BLACK );
+    star[i].x += star[i].dx;
+    star[i].y += star[i].dy;
+    if(star[i].z < 255) star[i].z++;
+
+    if(star[i].x < 0 || star[i].x >= DISPLAY_WIDTH || star[i].y < 0 || star[i].y >= DISPLAY_HEIGHT )
+    {
+      resetStar(star[i]);
+    }
+    tft.drawPixel((uint8_t)star[i].x, (uint8_t)star[i].y, tft.color565(star[i].z, star[i].z, star[i].z) );
+  }
+}
+
+void ScreenSavers::resetStar(Star& star)
+{
+  star.x = DISPLAY_WIDTH/2;
+  star.y = DISPLAY_HEIGHT/2;
+  star.dx = (float)random(-45, 90) / 100;
+  star.dy = (float)random(-45, 90) / 100;
+  star.z = 0;
 }
