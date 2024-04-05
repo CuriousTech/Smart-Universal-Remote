@@ -92,6 +92,7 @@ void Display::init(void)
 
   qmi.setWakeOnMotion(true); // set WOM (sets acc values)
   qmi.setWakeOnMotion(false); // enable acc/temp
+  m_int2Triggered = false;
 
   randomSeed(micros());
 }
@@ -144,8 +145,8 @@ void Display::service(void)
     {
       endSleep();
       m_backlightTimer = ee.ssTime;
-      if( m_brightness < ee.brightLevel[1] )
-        exitScreensaver();
+//      if( m_brightness < ee.brightLevel[1] )
+//        exitScreensaver();
     }
     else
       return;
@@ -344,6 +345,7 @@ void Display::startSleep()
     return;
 
   m_bSleeping = true;
+  m_brightness = ee.brightLevel[0] + 1; // no screensaver
   analogWrite(TFT_BL, m_bright = 0);
   if(ee.bWiFiEnabled)
     stopWiFi();
@@ -953,21 +955,22 @@ void Display::sliderCmd(uint8_t nType, uint8_t nOldVal, uint8_t nNewVal)
 // Pop uup a notification + add to notes list
 void Display::notify(char *pszNote)
 {
-  if(m_tile[m_nCurrTile].Extras & EX_TEST) // direct tft writes
-    return;
-  if( m_brightness < ee.brightLevel[1] ) // make it bright if not
-    exitScreensaver();
+  if(m_bSleeping == false && !(m_tile[m_nCurrTile].Extras & EX_TEST) ) // causes asserts
+  {
+    if( m_brightness < ee.brightLevel[1] ) // make it bright if not
+      exitScreensaver();
 
-  tft.setFreeFont(&FreeSans9pt7b);
+    tft.setFreeFont(&FreeSans9pt7b);
 
-  uint8_t w = tft.textWidth(pszNote) + (BORDER_SPACE*2);
-  if(w > 230) w = 230;
-  uint8_t x = (DISPLAY_WIDTH/2) - (w >> 1); // center on screen
-  const uint8_t y = 30; // kind of high up
+    uint8_t w = tft.textWidth(pszNote) + (BORDER_SPACE*2);
+    if(w > 230) w = 230;
+    uint8_t x = (DISPLAY_WIDTH/2) - (w >> 1); // center on screen
+    const uint8_t y = 30; // kind of high up
 
-  tft.fillRoundRect(x, y, w, tft.fontHeight() + 3, 5, TFT_ORANGE);
-  tft.setTextColor(TFT_BLACK, TFT_ORANGE);
-  tft.drawString( pszNote, x + BORDER_SPACE, y + BORDER_SPACE );
+    tft.fillRoundRect(x, y, w, tft.fontHeight() + 3, 5, TFT_ORANGE);
+    tft.setTextColor(TFT_BLACK, TFT_ORANGE);
+    tft.drawString( pszNote, x + BORDER_SPACE, y + BORDER_SPACE );
+  }
 
   for(int8_t i = NOTE_CNT - 2; i >= 0; i--) // move old notifications down
     m_pszNotifs[i+1] = m_pszNotifs[i];
