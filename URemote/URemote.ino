@@ -376,10 +376,7 @@ void jsonCallback(int16_t iName, int iValue, char *psValue)
       break;
     case 5: // PC_REMOTE
       if(WsPcClientID == 0)
-      {
         WsPcClientID = WsClientID;
-        display.notify("PC Connected");
-      }
       break;
     case 6: // PC_VOLUME
       display.setSliderValue(SL_PC, iValue);
@@ -458,10 +455,7 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
         display.m_nWsConnected--;
       WsClientID = 0;
       if(client->id() == WsPcClientID)
-      {
         WsPcClientID = 0;
-        display.notify("PC Disconnected");
-      }
       break;
     case WS_EVT_ERROR:    //error was received from the other end
       break;
