@@ -30,7 +30,7 @@ struct Bubble
   int8_t dx;
   int8_t dy;
   int8_t is;
-  int16_t size;
+  int16_t bsize;
   int16_t color;
 };
 
@@ -50,9 +50,9 @@ class ScreenSavers
 #define STARS 80
 #define BUFFER_SIZE 2048
 
-static_assert(sizeof(Bubble) * BUBBLES < BUFFER_SIZE, "m_buffer size too small");
-static_assert(sizeof(Line) * LINES < BUFFER_SIZE, "m_buffer size too small");
-static_assert(sizeof(Star) * STARS < BUFFER_SIZE, "m_buffer size too small");
+static_assert( (sizeof(Bubble) * BUBBLES) < BUFFER_SIZE, "m_buffer size too small");
+static_assert( (sizeof(Line) * LINES) < BUFFER_SIZE, "m_buffer size too small");
+static_assert( (sizeof(Star) * STARS) < BUFFER_SIZE, "m_buffer size too small");
 
 public:
   ScreenSavers(){};
@@ -60,14 +60,15 @@ public:
   void run(void);
 
   uint8_t m_saver;
-  uint8_t m_buffer[BUFFER_SIZE];
 
 private:
-  void Lines(void);
-  void Bubbles(void);
+  void Lines(bool bInit);
+  void Bubbles(bool bInit);
   void resetBubble(Bubble& bubble);
-  void Starfield(void);
+  void Starfield(bool bInit);
   void resetStar(Star& star);
+
+  uint8_t m_buffer[BUFFER_SIZE];
 };
 
 #endif // SCREENSAVERS_H
