@@ -11,6 +11,19 @@ void ScreenSavers::select(int n)
 {
   m_saver = n;
   randomSeed(micros());
+
+  switch(m_saver)
+  {
+    case SS_Lines:
+      Lines(true);
+      break;
+    case SS_Bubbles:
+      Bubbles(true);
+      break;
+    case SS_Starfield:
+      Starfield(true);
+      break;
+  }
 }
 
 void ScreenSavers::run()
@@ -18,13 +31,13 @@ void ScreenSavers::run()
   switch(m_saver)
   {
     case SS_Lines:
-      Lines();
+      Lines(false);
       break;
     case SS_Bubbles:
-      Bubbles();
+      Bubbles(false);
       break;
     case SS_Starfield:
-      Starfield();
+      Starfield(false);
       break;
   }
 
@@ -34,7 +47,7 @@ void ScreenSavers::run()
     delay(1);
 }
 
-void ScreenSavers::Lines()
+void ScreenSavers::Lines(bool bInit)
 {
   Line *line = (Line *)m_buffer;
   static Line delta;
@@ -43,10 +56,8 @@ void ScreenSavers::Lines()
   static int8_t rgbd[3] = {0};
   static uint8_t idx;
 
-  static bool bInit = false;
-  if(!bInit)
+  if(bInit)
   {
-    bInit = true;
     tft.fillScreen(TFT_BLACK);
     memset(line, 0, sizeof(Line) * LINES);
     memset(&delta, 1, sizeof(delta));
@@ -100,15 +111,13 @@ void ScreenSavers::Lines()
   idx = next;
 }
 
-void ScreenSavers::Bubbles()
+void ScreenSavers::Bubbles(bool bInit)
 {
   Bubble *bubble = (Bubble *)m_buffer;
   static uint8_t skipper = 4;
 
-  static bool bInit = false;
-  if(!bInit)
+  if(bInit)
   {
-    bInit = true;
     tft.fillScreen(TFT_BLACK);
     for(uint8_t i = 0; i < BUBBLES; i++)
     {
@@ -123,8 +132,8 @@ void ScreenSavers::Bubbles()
   // Erase last bubble
   for(uint8_t i = 0; i < BUBBLES; i++)
   {
-    tft.drawCircle(bubble[i].x, bubble[i].y, bubble[i].size, TFT_BLACK );
-    if(bubble[i].size > random(24, 14))
+    tft.drawCircle(bubble[i].x, bubble[i].y, bubble[i].bsize, TFT_BLACK );
+    if(bubble[i].bsize > random(24, 14))
     {
       resetBubble(bubble[i]);
     }
@@ -133,12 +142,12 @@ void ScreenSavers::Bubbles()
   // Draw bubbles
   for(uint8_t i = 0; i < BUBBLES; i++)
   {
-    bubble[i].size += bubble[i].is;
+    bubble[i].bsize += bubble[i].is;
     bubble[i].x += bubble[i].dx;
     bubble[i].y += bubble[i].dy;
     bubble[i].x = constrain(bubble[i].x, 1, DISPLAY_WIDTH-1);
     bubble[i].y = constrain(bubble[i].y, 1, DISPLAY_HEIGHT-1);
-    tft.drawCircle(bubble[i].x, bubble[i].y, bubble[i].size, bubble[i].color );
+    tft.drawCircle(bubble[i].x, bubble[i].y, bubble[i].bsize, bubble[i].color );
   }
 }
 
@@ -153,19 +162,17 @@ void ScreenSavers::resetBubble(Bubble& bubble)
   bubble.y = (int16_t)random(2, DISPLAY_WIDTH - 2);
   bubble.dx = (int8_t)random(-3, 6);
   bubble.dy = (int8_t)random(-3, 6);
-  bubble.size = 1;
+  bubble.bsize = 1;
   bubble.is = random(1, 4);
   bubble.color = palette[ random(0, sizeof(palette) / sizeof(uint16_t) ) ];
 }
 
-void ScreenSavers::Starfield()
+void ScreenSavers::Starfield(bool bInit)
 {
   Star *star = (Star *)m_buffer;
 
-  static bool bInit = false;
-  if(!bInit)
+  if(bInit)
   {
-    bInit = true;
     tft.fillScreen(TFT_BLACK);
     for(uint8_t i = 0; i < STARS; i++)
       resetStar(star[i]);
