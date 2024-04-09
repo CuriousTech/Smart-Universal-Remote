@@ -9,6 +9,7 @@ if(!Http.Connected)
 Pm.SetTimer(1000)
 heartbeat = 0
 sum = old_sum = 0
+old_pos = 0
 
 // Handle published events
 function OnCall(msg, event, data)
@@ -45,6 +46,16 @@ function OnCall(msg, event, data)
 // Update remote with displayed vars and states
 function SendVars()
 {
+	if(Media.Position != old_pos)
+	{
+		old_pos = Media.Position
+		pos = Math.floor(Media.Position * 100 / Media.Duration)
+		s = '{'
+		s +='"PC_MED_POS":' +pos+','
+		s += '}'
+		Http.Send(s)
+	}
+
 	sum = Pm.Volume + Reg.statTemp + Reg.statSetTemp + Reg.outTemp + Reg.gdoDoor + Reg.gdoCar + Reg.statFan
 	if(sum == old_sum)
 		return
@@ -82,6 +93,9 @@ function procLine(data)
 		case 'volume':
 			Pm.Volume = +Json.value
 			break
+		case 'pos':
+			Media.Position = Json.value * Media.Duration / 100
+			break
 		case 'print':
 			Pm.Echo(Json.text)
 			break
@@ -115,7 +129,7 @@ function OnTimer()
 	if(Http.Connected)
 		SendVars()
 	time = (new Date()).valueOf()
-	if(time - heartbeat > 90*1000)
+	if(time - heartbeat > 30*1000)
 	{
 		if(!Http.Connected)
 			Http.Connect( 'event', Url )  // Start the event stream
