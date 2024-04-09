@@ -81,20 +81,33 @@ enum Button_Function
 #define BF_REPEAT  (1 << 1) // repeatable (hold)
 #define BF_STATE_2 (1 << 2) // tri-state
 #define BF_FIXED_POS (1 << 3)
-#define BF_TEXT   (1<< 4)
+#define BF_TEXT    (1<< 4)
+#define BF_SLIDER_H (1<< 5)
+#define BF_SLIDER_V (1<< 6)
 
 // Tile extras
+#define EX_NONE  (0)
 #define EX_CLOCK  (1 << 1)
 #define EX_NOTIF  (1 << 2)
 #define EX_SCROLL (1 << 3)
-#define EX_TEST   (1 << 4)
 
-enum slider_type
+enum slider_func
 {
-  SL_None,
-  SL_Lights,
-  SL_PC,
-  SL_BT,
+  SFN_None,
+  SFN_Lights,
+  SFN_PC,
+  SFN_BT,
+};
+
+#define SFL_REVERSE (1<<0)
+
+struct Slider
+{
+  uint8_t  nFunc;         // see slider_func
+  uint8_t  flags;         // see SFL_xx
+  uint16_t nPos;          // angle from 12 o'clock
+  uint16_t nSize;
+  uint8_t  nValue;        // 0-100 value of screen's slider
 };
 
 struct Button
@@ -107,18 +120,19 @@ struct Button
   const unsigned short *pIcon[2]; // Normal, pressed icons
   uint8_t w;              // calculated if 0
   uint8_t h;              // ""
-  uint16_t code[4];       // codes for IR, BT HID, etc
+  uint16_t data[4];       // codes for IR, BT HID, etc
   uint8_t x;
-  int16_t y; // y can go over 240
+  int16_t y; // y can go over 240 (scrollable pages)
 };
+
+#define SLIDER_CNT 2 // increase for more arc sliders per tile
 
 struct Tile
 {
   const char *pszTitle;    // Top text
   uint8_t nRow;
   uint8_t Extras;           // See EX_ flags
-  uint8_t nSliderType;      // see slider_type
-  uint8_t nSliderValue;     // 0-100 value of screen's slider
+  Slider slider[SLIDER_CNT];
   int16_t nScrollIndex;     // page scrolling top offset
   uint16_t nPageHeight;     // height for page scrolling
   const unsigned short *pBGImage; // background image for screen
@@ -138,6 +152,7 @@ public:
   void exitScreensaver(void);
   void notify(char *pszNote);
   void setSliderValue(uint8_t st, int8_t iValue);
+  void setButtonValue(uint16_t flags, uint8_t fn, uint8_t iValue);
   void RingIndicator(uint8_t n);
 
 private:
@@ -146,15 +161,14 @@ private:
   void scrollPage(uint8_t nTile, int16_t nDelta);
   void formatButtons(Tile& pTile);
   void drawButton(Tile& pTile, Button *pBtn, bool bPressed);
-  void testTile(void);
   void buttonCmd(Button *pBtn, bool bRepeat);
-  void sliderCmd(uint8_t nType, uint8_t nOldVal, uint8_t nNewVal);
+  void sliderCmd(uint8_t nFunc, uint8_t nNewVal);
   void dimmer(void);
-  void drawSlider(uint8_t val);
+  void drawSlider(Slider& slider, uint8_t newValue);
   void btnRSSI(Button *pBtn);
   void drawNotifs(Tile& pTile);
   void drawClock(void);
-  bool sliderHit(uint8_t& value);
+  bool sliderHit(Slider& slider, uint8_t& value);
 
   void cspoint(uint16_t &x2, uint16_t &y2, uint16_t x, uint16_t y, float angle, float size);
 
@@ -185,8 +199,7 @@ Tile layout
       "",
       0, // row 0
       EX_CLOCK,
-      SL_None,
-      0,
+      {{SFN_None},{SFN_None}},
       0,
       0,
       0,//watchFace,
@@ -202,9 +215,8 @@ Tile layout
     {
       "Power",
       1, // row 1
-      0,
-      SL_None,
-      0,
+      EX_NONE,
+      {{SFN_None},{SFN_None}},
       0,
       0,
       NULL,
@@ -220,9 +232,8 @@ Tile layout
     {
       "TV",
       1,
-      0,
-      0,
-      0,
+      EX_NONE,
+      {{SFN_None},{SFN_None}},
       0,
       0,
       NULL,
@@ -249,20 +260,18 @@ Tile layout
     {
       "PC",
       1,
-      0,
-      SL_PC,
-      0,
+      EX_NONE,
+      {{SFN_PC, 0, 90, 90},{SFN_None}},
       0,
       0,
       NULL,
       {
-        {1, 0, BF_REPEAT, BTF_PC_Media, NULL,   {i_lt, 0}, 32, 32, {3,0}},
+        {1, 0, BF_REPEAT, BTF_PC_Media, NULL,  {i_lt, 0}, 32, 32, {3,0}},
         {2, 0, 0, BTF_PC_Media,       "Play",  {0}, 60, 32, {0,0}},
-        {3, 0, BF_REPEAT, BTF_PC_Media, NULL,   {i_rt, 0}, 32, 32, {2,0}},
-        {4, 1, 0, BTF_PC_Media,        "STOP",  {0}, 60, 32, {1,0}},
-        {5, 2, BF_REPEAT, BTF_PC_Media, "Vol Up",{0}, 60, 32, {5,0}},
-        {6, 2, 0, BTF_PC_Media,        "Mute",  {0}, 60, 32, {4,0}},
-        {7, 2, BF_REPEAT, BTF_PC_Media, "Vol Dn",{0}, 60, 32, {6,0}},
+        {3, 0, BF_REPEAT, BTF_PC_Media, NULL,  {i_rt, 0}, 32, 32, {2,0}},
+        {4, 1, 0, BTF_PC_Media,        "STOP", {0}, 60, 32, {1,0}},
+        {5, 2, 0, BTF_PC_Media,        "Mute", {0}, 60, 32, {4,0}},
+        {6, 3, BF_SLIDER_H, BTF_PC_Media, "",  {0}, 120, 32, {1001,0}},
       }
     },
     //
@@ -270,8 +279,7 @@ Tile layout
       "Lights",
       1,
       EX_SCROLL,
-      SL_Lights,
-      0,
+      {{SFN_Lights, SFL_REVERSE, 270, 90},{SFN_None}},
       0,
       0,
       NULL,
@@ -283,9 +291,8 @@ Tile layout
     {
       "Thermostat",
       2, // row 2
-      0,
-      SL_None,
-      0,
+      EX_NONE,
+      {{SFN_None},{SFN_None}},
       0,
       0,
       NULL,
@@ -306,9 +313,8 @@ Tile layout
     {
       "Garage Door",
       2, // row 2
-      0,
-      SL_None,
-      0,
+      EX_NONE,
+      {{SFN_None},{SFN_None}},
       0,
       0,
       NULL,
@@ -318,27 +324,12 @@ Tile layout
         {3, 2, 0, BTF_GdoCmd, "Open", {0, 0}, 98, 32, {0}},
       }
     },
-    //
-    {
-      "Test Tile",
-      2,
-      EX_TEST,
-      SL_None,
-      0,
-      0,
-      0,
-      NULL,
-      {
-        {0}
-      }
-    },
     // Pull-up tile (last)
     {
       "Settings",
       3, // row 3
-      0,
-      SL_None,
-      0,
+      EX_NONE,
+      {{SFN_None},{SFN_None}},
       0,
       0,
       NULL,
@@ -354,8 +345,7 @@ Tile layout
       "Notifications",
       4,
       EX_NOTIF | EX_SCROLL,
-      SL_None,
-      0,
+      {{SFN_None},{SFN_None}},
       0,
       0,
       NULL,
@@ -372,26 +362,24 @@ Tile layout
   uint32_t m_nDispFreeze;
   uint8_t  m_nRowStart[TILES]; // index of screen at row
   uint8_t  m_nColCnt[TILES]; // column count for each row of screens
-  uint16_t m_vadc;
-  float    m_acc[3];
-  float    m_accCal[3];
   uint16_t m_sleepTimer;
-  bool     m_bSleeping;
 
 #define NOTE_CNT 10
   char *m_pszNotifs[NOTE_CNT + 1];
 
 public:
   uint8_t m_brightness = 200; // initial brightness
-  bool m_bCharging;
+  bool    m_bSleeping;
+  bool    m_bCharging;
   uint8_t m_nWsConnected; // websockets connected (to stay awake)
 
   uint16_t m_statTemp;
   uint16_t m_statSetTemp;
-  bool m_statFan;
+  bool     m_statFan;
   uint16_t m_outTemp;
-  bool m_bGdoDoor;
-  bool m_bGdoCar;
+  bool     m_bGdoDoor;
+  bool     m_bGdoCar;
+  uint16_t m_vadc;
 };
 
 extern Display display;
