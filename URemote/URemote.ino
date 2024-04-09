@@ -39,7 +39,7 @@ SOFTWARE.
 
 #ifdef SERVER_ENABLE
 #include <ESPAsyncWebServer.h> // https://github.com/me-no-dev/ESPAsyncWebServer
-#include <JsonParse.h> // https://github.com/CuriousTech/ESP8266-HVAC/tree/master/Libraries/JsonParse
+#include <JsonParse.h> // https://github.com/CuriousTech/ESP-HVAC/tree/master/Libraries/JsonParse
 #include "jsonString.h"
 #include "pages.h"
 
@@ -85,7 +85,9 @@ Lights lights;
 const char *hostName = "URemote"; // Device and OTA name
 
 bool bConfigDone = false; // EspTouch done or creds set
-bool bStarted = false;
+bool bStarted = false; // first start
+bool bRestarted = false; // consecutive restarts
+
 uint32_t connectTimer;
 bool bRXActive;
 
@@ -143,6 +145,7 @@ void stopWiFi()
   if(WiFi.status() != WL_CONNECTED)
     return;
 
+  ets_printf("stopWifi\n");
   ee.update();
 #ifdef OTA_ENABLE
   ArduinoOTA.end();
@@ -154,6 +157,7 @@ void stopWiFi()
   WsPcClientID = 0;
   
   WiFi.setSleep(true);
+  bRestarted = false;
 }
 
 void startWiFi()
@@ -161,6 +165,7 @@ void startWiFi()
   if(WiFi.status() == WL_CONNECTED)
     return;
 
+  ets_printf("startWifi\n");
   WiFi.setSleep(false);
 
   WiFi.hostname(hostName);
@@ -171,10 +176,12 @@ void startWiFi()
     WiFi.begin(ee.szSSID, ee.szSSIDPassword);
     WiFi.setHostname(hostName);
     bConfigDone = true;
+    ets_printf("Start WiFi %s %s\n", ee.szSSID, ee.szSSIDPassword);
   }
   else
   {
     WiFi.beginSmartConfig();
+    ets_printf("SmartConfig starting\n");
   }
   connectTimer = now();
 
@@ -208,8 +215,12 @@ bool secondsWiFi() // called once per second
 
 //  ets_printf("heap %d\n", ESP.getFreeHeap());
 
+  if(display.m_bSleeping)
+    return false;
+
   if(!bConfigDone)
   {
+
     if( WiFi.smartConfigDone())
     {
       bConfigDone = true;
@@ -227,8 +238,13 @@ bool secondsWiFi() // called once per second
         MDNS.addService("iot", "tcp", 80);
         WiFi.SSID().toCharArray(ee.szSSID, sizeof(ee.szSSID)); // Get the SSID from SmartConfig or last used
         WiFi.psk().toCharArray(ee.szSSIDPassword, sizeof(ee.szSSIDPassword) );
-        bConn = true;
         lights.init();
+        bConn = true;
+      }
+      if(!bRestarted) // wakeup work if needed
+      {
+        bRestarted = true;
+// todo: reconnect to host
       }
     }
     else if(now() - connectTimer > 10) // failed to connect for some reason
@@ -256,16 +272,6 @@ bool sendBLE(uint16_t *pCode)
 #endif
 }
 
-/* HOTKEY
-  case 0: // play/pause
-  case 1: // stop
-  case 2: // next
-  case 3: // back
-  case 4: // Mute
-  case 5: // Volume up
-  case 6: // Volume down
-*/
-
 bool sendPCMediaCmd( uint16_t *pCode)
 {
 #ifdef SERVER_ENABLE
@@ -276,6 +282,12 @@ bool sendPCMediaCmd( uint16_t *pCode)
   if(pCode[0] == 1000)
   {
     jsonString js("volume");
+    js.Var("value", pCode[1]);
+    ws.text(WsPcClientID, js.Close());
+  }
+  if(pCode[0] == 1001)
+  {
+    jsonString js("pos");
     js.Var("value", pCode[1]);
     ws.text(WsPcClientID, js.Close());
   }
@@ -335,10 +347,11 @@ const char *jsonListCmd[] = {
   "RX",
   "PC_REMOTE", // PC commands client
   "PC_VOLUME",
+  "PC_MED_POS",
   "LED",
   "STATTEMP",
-  "STATSETTEMP",
-  "STATFAN", // 10
+  "STATSETTEMP", // 10
+  "STATFAN",
   "OUTTEMP",
   "ST", // sleeptime
   "SS", // screensaver time
@@ -379,36 +392,39 @@ void jsonCallback(int16_t iName, int iValue, char *psValue)
         WsPcClientID = WsClientID;
       break;
     case 6: // PC_VOLUME
-      display.setSliderValue(SL_PC, iValue);
+      display.setSliderValue(SFN_PC, iValue);
       break;
-    case 7: // LED
+    case 7: // PC_MED_POS
+      display.setButtonValue(BF_SLIDER_H, BTF_PC_Media, iValue);
+      break;
+    case 8: // LED
       digitalWrite(IR_SEND_PIN, iValue ? HIGH:LOW);
       break;
-    case 8: // STATTEMP
+    case 9: // STATTEMP
       display.m_statTemp = iValue;
       break;
-    case 9: // STATSETTEMP
+    case 10: // STATSETTEMP
       display.m_statSetTemp = iValue;
       break;
-    case 10: // STATFAN
+    case 11: // STATFAN
       display.m_statFan = iValue;
       break;
-    case 11: // OUTTEMP
+    case 12: // OUTTEMP
       display.m_outTemp = iValue;
       break;
-    case 12: // ST
+    case 13: // ST
       ee.sleepTime = iValue;
       break;
-    case 13: // SS
+    case 14: // SS
       ee.ssTime = iValue;
       break;
-    case 14:
+    case 15:
       ESP.restart();
       break;
-    case 15:
+    case 16:
       display.m_bGdoDoor = iValue;
       break;
-    case 16:
+    case 17:
       display.m_bGdoCar = iValue;
       break;
   }
@@ -421,7 +437,7 @@ String dataJson()
   return js.Close();
 }
 
-uint8_t ssCnt = 58;
+uint8_t ssCnt = 26;
 
 void sendState()
 {
