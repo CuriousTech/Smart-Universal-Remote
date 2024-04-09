@@ -40,7 +40,7 @@ struct Star
   float y;
   float dx;
   float dy;
-  uint8_t z;
+  float z;
 };
 
 class ScreenSavers
@@ -58,7 +58,6 @@ public:
   ScreenSavers(){};
   void select(int n);
   void run(void);
-
   uint8_t m_saver;
 
 private:
