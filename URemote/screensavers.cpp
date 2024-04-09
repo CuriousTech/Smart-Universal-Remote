@@ -41,10 +41,17 @@ void ScreenSavers::run()
       break;
   }
 
-  if(display.m_bCharging)
-    tft.drawCircle(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, DISPLAY_WIDTH/2-1, TFT_BLUE);
-  else
-    delay(1);
+  // battery meter
+  int16_t v = (display.m_bCharging) ? (display.m_vadc - 1283) * 360 /  (1802 - 1283): (display.m_vadc - 1283) * 360 /  (1550 - 1283);
+  int16_t ang = constrain( v, 0, 359);
+
+  uint16_t color = (display.m_bCharging) ? TFT_BLUE:TFT_GREEN;
+  if(ang <= 90) color = TFT_RED; // 25% left
+  else if(ang <= 180) color = TFT_YELLOW; // 50% left
+
+  tft.drawArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 120, 117, 0, ang, color, TFT_BLACK, false);
+  if(ang < 359)
+    tft.drawArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 120, 117, ang, 359, TFT_BLACK, TFT_BLACK, false); // remove the rest
 }
 
 void ScreenSavers::Lines(bool bInit)
@@ -125,9 +132,9 @@ void ScreenSavers::Bubbles(bool bInit)
     }
   }
 
-  if(--skipper) // slow it down by x*loop delay of 1ms
+  if(--skipper) // slow it down to look good
     return;
-  skipper = 16;
+  skipper = 7;
 
   // Erase last bubble
   for(uint8_t i = 0; i < BUBBLES; i++)
@@ -183,7 +190,7 @@ void ScreenSavers::Starfield(bool bInit)
     tft.drawPixel((uint8_t)star[i].x, (uint8_t)star[i].y, TFT_BLACK );
     star[i].x += star[i].dx;
     star[i].y += star[i].dy;
-    if(star[i].z < 255) star[i].z++;
+    if(star[i].z < 255) star[i].z += 0.1;
 
     if(star[i].x < 0 || star[i].x >= DISPLAY_WIDTH || star[i].y < 0 || star[i].y >= DISPLAY_HEIGHT )
     {
