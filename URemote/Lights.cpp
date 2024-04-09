@@ -210,7 +210,7 @@ void Lights::callback(int8_t iName, char *pName, int32_t iValue, char *psValue)
       break;
     case 3: // level
       m_nLevel[m_nSwitch] = iValue;
-      display.setSliderValue(SL_Lights, m_nLevel[m_nSwitch] );
+      display.setSliderValue(SFN_Lights, m_nLevel[m_nSwitch] );
       break;
   }
 }
