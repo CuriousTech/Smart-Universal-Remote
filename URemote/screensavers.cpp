@@ -190,7 +190,7 @@ void ScreenSavers::Starfield(bool bInit)
     tft.drawPixel((uint8_t)star[i].x, (uint8_t)star[i].y, TFT_BLACK );
     star[i].x += star[i].dx;
     star[i].y += star[i].dy;
-    if(star[i].z < 255) star[i].z += 0.1;
+    if(star[i].z < 255) star[i].z++;
 
     if(star[i].x < 0 || star[i].x >= DISPLAY_WIDTH || star[i].y < 0 || star[i].y >= DISPLAY_HEIGHT )
     {
