@@ -97,6 +97,7 @@ enum slider_func
   SFN_Lights,
   SFN_PC,
   SFN_BT,
+  SFN_Brightness,
 };
 
 #define SFL_REVERSE (1<<0)
@@ -329,7 +330,7 @@ Tile layout
       "Settings",
       3, // row 3
       EX_NONE,
-      {{SFN_None},{SFN_None}},
+      {{SFN_Brightness, SFL_REVERSE, 270, 90},{SFN_None}},
       0,
       0,
       NULL,
@@ -365,7 +366,7 @@ Tile layout
   uint16_t m_sleepTimer;
 
 #define NOTE_CNT 10
-  char *m_pszNotifs[NOTE_CNT + 1];
+  const char *m_pszNotifs[NOTE_CNT + 1];
 
 public:
   uint8_t m_brightness = 200; // initial brightness
@@ -375,7 +376,7 @@ public:
 
   uint16_t m_statTemp;
   uint16_t m_statSetTemp;
-  bool     m_statFan;
+  bool     m_bStatFan;
   uint16_t m_outTemp;
   bool     m_bGdoDoor;
   bool     m_bGdoCar;
