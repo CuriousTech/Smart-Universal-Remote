@@ -105,7 +105,6 @@ void Display::exitScreensaver()
     drawTile(m_nCurrTile, true); // draw over screensaver
     sprite.pushSprite(0, 0);
     qmi.setWakeOnMotion(false); // enable gyro/acc/temp
-    delay(1);
     m_int2Triggered = false; // causes an interrupt
   }
   m_brightness = ee.brightLevel[1]; // increase brightness for any touch
@@ -126,22 +125,16 @@ void Display::service(void)
 
   if( m_int2Triggered) // set for IMU WOM
   {
-    ets_printf("INT2\n");
+//    ets_printf("INT2\n");
     m_int2Triggered = false;
     m_backlightTimer = ee.ssTime;
     if( m_brightness < ee.brightLevel[1] )
       exitScreensaver();
   }
 
-  if( m_tpintTriggered) // may be used later
-  {
-    m_tpintTriggered = false;
-    ets_printf("TP_INT\n");
-  }
-
   if(m_bSleeping)
   {
-  ets_printf("sleeping\n");
+//  ets_printf("sleeping\n");
     if( snooze(30000) )
     {
       endSleep();
@@ -362,6 +355,7 @@ void Display::endSleep()
   if(!m_bSleeping)
     return;
 
+  ets_printf("endSleep\n");
   m_sleepTimer = 0;
   m_bSleeping = false;
 
@@ -460,10 +454,6 @@ void IRAM_ATTR Display::handleISR2(void)
 {
   m_int2Triggered = true;
 }
-void IRAM_ATTR Display::handleTPISR(void)
-{
-  m_tpintTriggered = true;
-}
 
 // called each second
 void Display::oneSec()
@@ -480,7 +470,6 @@ void Display::oneSec()
       ss.select( random(0, SS_Count) );
 #endif
       qmi.setWakeOnMotion(true); // enable movement to wake
-      delay(1);
       m_int2Triggered = false; // causes an interrupt
       m_sleepTimer = ee.sleepTime;
     }
@@ -533,13 +522,20 @@ void Display::oneSec()
     }
   }
 
-  uint16_t v = analogRead(BATTV);
+  static uint16_t v[4];
+  static uint8_t nV = 0;
+  v[nV] = analogRead(BATTV);
 
-  if(m_vadc < v - 50) // charging usually jumps about 300+/-
+  if(m_vadc < v[nV] - 50) // charging usually jumps about 300+/-
     m_bCharging = true;
-  else if(m_vadc > v + 50)
+  else if(m_vadc > v[nV] + 50)
     m_bCharging = false;
-  m_vadc = v;
+
+  if(++nV == 4) nV= 0;
+  m_vadc = 0;
+  for(uint8_t vi = 0; vi < 4; vi++)  // do a small average
+    m_vadc += v[vi];
+  m_vadc >>= 2;
 }
 
 bool Display::snooze(uint32_t ms)
@@ -554,10 +550,18 @@ bool Display::snooze(uint32_t ms)
     oldMs = ms;
     esp_sleep_enable_ext0_wakeup( GPIO_NUM_5, 0); // TP_INT
     esp_sleep_enable_ext1_wakeup( 1 << IMU_INT2, ESP_EXT1_WAKEUP_ANY_HIGH);
-    if(ms > 10000) ms = 10000;
+//    if(ms > 10000) ms = 10000;
     esp_sleep_enable_timer_wakeup(ms * mS_TO_uS);
     delay(100);
   }
+
+  if(m_vadc < 1283) // 3.1V
+  {
+    esp_sleep_enable_timer_wakeup(60 * 60 * S_TO_uS);  // 1 hour
+    delay(100);
+    esp_deep_sleep_start();
+  }
+  
   esp_light_sleep_start();
 
   esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
@@ -705,7 +709,15 @@ void Display::drawTile(int8_t nTile, bool bFirst)
 
   for(uint8_t j = 0; j < SLIDER_CNT; j++)
     if( pTile.slider[j].nFunc )
+    {
+      switch( pTile.slider[j].nFunc ) // Todo: set current slider values here
+      {
+        case SFN_Brightness:
+          pTile.slider[j].nValue = ee.brightLevel[1] * 100 / 255;
+          break;
+      }
       drawSlider( pTile.slider[j], pTile.slider[j].nValue );
+    }
 }
 
 void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed)
@@ -774,7 +786,7 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed)
       s = String(qmi.readTemp(), 1)+"F";
       break;
     case BTF_Stat_Fan:
-      if(m_statFan)
+      if(m_bStatFan)
         pBtn->flags |= BF_STATE_2;
       else
         pBtn->flags &= ~BF_STATE_2;
@@ -943,6 +955,9 @@ void Display::sliderCmd(uint8_t nFunc, uint8_t nNewVal)
       code[0] = 1000;
       code[1] = nNewVal;
       sendPCMediaCmd(code);
+      break;
+    case SFN_Brightness: // screen brightness
+      m_brightness = ee.brightLevel[1] = nNewVal * 255 / 100; // 100% = 255
       break;
   }
 }
