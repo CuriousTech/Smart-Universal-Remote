@@ -27,6 +27,7 @@ SOFTWARE.
 #define OTA_ENABLE  //uncomment to enable Arduino IDE Over The Air update code (uses ~4K heap)
 #define SERVER_ENABLE // uncomment to enable server and WebSocket
 //#define BLE_ENABLE // uncomment for BLE keyboard (uses 510KB (16%) PROGMEN and >100K heap)
+#define CLIENT_ENABLE // uncomment for PC client WebSocket
 
 #include <WiFi.h>
 #include <TimeLib.h> // http://www.pjrc.com/teensy/td_libs_Time.html
@@ -54,6 +55,14 @@ JsonParse jsonParse(jsonCallback);
 #ifdef BLE_ENABLE
 #include <BleKeyboard.h> // https://github.com/T-vK/ESP32-BLE-Keyboard
 BleKeyboard bleKeyboard;
+#endif
+
+#ifdef CLIENT_ENABLE
+#include <WebSocketsClient.h>
+WebSocketsClient wsClient;
+bool bWscConnected;
+void WscSend(String s);
+void startListener(void);
 #endif
 
 // GPIO 15-18 reserved for keypad
@@ -149,12 +158,16 @@ void stopWiFi()
   ee.update();
 #ifdef OTA_ENABLE
   ArduinoOTA.end();
-  delay(100); // fix ArduinoOTA crash?
+  delay(100); // fix ArduinoOTA crash
 #endif
 
   display.m_nWsConnected = 0;
   WsClientID = 0;
   WsPcClientID = 0;
+
+#ifdef CLIENT_ENABLE
+  wsClient.disconnect();
+#endif
   
   WiFi.setSleep(true);
   bRestarted = false;
@@ -165,7 +178,6 @@ void startWiFi()
   if(WiFi.status() == WL_CONNECTED)
     return;
 
-  ets_printf("startWifi\n");
   WiFi.setSleep(false);
 
   WiFi.hostname(hostName);
@@ -181,7 +193,7 @@ void startWiFi()
   else
   {
     WiFi.beginSmartConfig();
-    ets_printf("SmartConfig starting\n");
+    display.notify("Use EspTouch");
   }
   connectTimer = now();
 
@@ -206,6 +218,10 @@ void serviceWiFi()
 #ifdef OTA_ENABLE
 // Handle OTA server.
   ArduinoOTA.handle();
+#endif
+
+#ifdef CLIENT_ENABLE
+  wsClient.loop();
 #endif
 }
 
@@ -240,6 +256,9 @@ bool secondsWiFi() // called once per second
         WiFi.psk().toCharArray(ee.szSSIDPassword, sizeof(ee.szSSIDPassword) );
         lights.init();
         bConn = true;
+#ifdef CLIENT_ENABLE
+        startListener();
+#endif
       }
       if(!bRestarted) // wakeup work if needed
       {
@@ -274,28 +293,26 @@ bool sendBLE(uint16_t *pCode)
 
 bool sendPCMediaCmd( uint16_t *pCode)
 {
-#ifdef SERVER_ENABLE
-  if(WsPcClientID == 0)
-    return false;
+#ifdef CLIENT_ENABLE
 
   display.RingIndicator(2);
   if(pCode[0] == 1000)
   {
     jsonString js("volume");
     js.Var("value", pCode[1]);
-    ws.text(WsPcClientID, js.Close());
+    WscSend(js.Close());
   }
   if(pCode[0] == 1001)
   {
     jsonString js("pos");
     js.Var("value", pCode[1]);
-    ws.text(WsPcClientID, js.Close());
+    WscSend(js.Close());
   }
   else
   {
     jsonString js("media");
     js.Var("HOTKEY", pCode[0]);
-    ws.text(WsPcClientID, js.Close());
+    WscSend(js.Close());
   }
   return true;
 #else
@@ -306,14 +323,11 @@ bool sendPCMediaCmd( uint16_t *pCode)
 // Currently using PC to relay
 bool sendStatCmd( uint16_t *pCode)
 {
-#ifdef SERVER_ENABLE
-  if(WsPcClientID == 0)
-    return false;
-
+#ifdef CLIENT_ENABLE
   display.RingIndicator(2);
   jsonString js("STAT");
   js.Var("value", pCode[0]);
-  ws.text(WsPcClientID, js.Close());
+  WscSend(js.Close());
   return true;
 #else
   return false;
@@ -323,14 +337,11 @@ bool sendStatCmd( uint16_t *pCode)
 // Currently using PC to relay
 bool sendGdoCmd( uint16_t *pCode)
 {
-#ifdef SERVER_ENABLE
-  if(WsPcClientID == 0)
-    return false;
-
+#ifdef CLIENT_ENABLE
   display.RingIndicator(2);
   jsonString js("GDOCMD");
   js.Var("value", pCode[0]);
-  ws.text(WsPcClientID, js.Close());
+  WscSend(js.Close());
   return true;
 #else
   return false;
@@ -361,6 +372,7 @@ const char *jsonListCmd[] = {
   NULL
 };
 
+// this is for the web page, and needs to be seperated from the PC client
 void jsonCallback(int16_t iName, int iValue, char *psValue)
 {
   static uint16_t code[4];
@@ -407,7 +419,7 @@ void jsonCallback(int16_t iName, int iValue, char *psValue)
       display.m_statSetTemp = iValue;
       break;
     case 11: // STATFAN
-      display.m_statFan = iValue;
+      display.m_bStatFan = iValue;
       break;
     case 12: // OUTTEMP
       display.m_outTemp = iValue;
@@ -430,6 +442,7 @@ void jsonCallback(int16_t iName, int iValue, char *psValue)
   }
 }
 
+//this does basically nothing for now (but used for keepalive)
 String dataJson()
 {
   jsonString js("state");
@@ -539,7 +552,7 @@ void loop()
   static uint8_t hour_save, min_save = 255, sec_save;
   static int8_t lastSec;
   static int8_t lastHour;
-  
+
   display.service();  // check for touch, etc.
 
   if(uTime.check(ee.tz))
@@ -602,3 +615,51 @@ void loop()
   }
   delay(1);
 }
+
+// remote WebSocket for sending all commands to PC and recieving states
+// Thermostate and GDO go through this as well for speed
+
+#ifdef CLIENT_ENABLE
+
+void WscSend(String s) 
+{
+  if(bWscConnected)
+    wsClient.sendTXT(s);
+}
+
+static void clientEventHandler(WStype_t type, uint8_t * payload, size_t length)
+{
+  switch(type)
+  {
+    case WStype_CONNECTED:
+      bWscConnected = true;
+//      display.notify("PC connected"); // helps see things connecting
+      break;
+    case WStype_DISCONNECTED:
+      bWscConnected = false;
+      break;
+    case WStype_TEXT:
+      jsonParse.process((char*)payload);
+      break;
+    case WStype_BIN:
+      break;
+    case WStype_ERROR:      
+    case WStype_FRAGMENT_TEXT_START:
+    case WStype_FRAGMENT_BIN_START:
+    case WStype_FRAGMENT:
+    case WStype_FRAGMENT_FIN:
+      break;
+  }
+}
+
+void startListener()
+{
+  IPAddress ip(ee.hostIp);
+  static char szHost[32];
+  wsClient.begin(ip.toString().c_str(), ee.hostPort, "/ws");
+
+  wsClient.onEvent(clientEventHandler);
+  // try ever 5000 again if connection has failed
+  wsClient.setReconnectInterval(5000);
+}
+#endif
