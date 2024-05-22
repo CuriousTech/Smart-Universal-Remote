@@ -157,9 +157,13 @@ public:
   void RingIndicator(uint8_t n);
 
 private:
-  void swipeTile(void);
+  void swipeCheck(int16_t dX, int16_t dY);
+  void checkButtonHit(int16_t touchXstart, int16_t touchYstart);
+  void startSwipe(void);
+  void swipeTile(int16_t dX, int16_t dY);
+  void snapTile(void);
   void drawTile(int8_t nTile, bool bFirst);
-  void scrollPage(uint8_t nTile, int16_t nDelta);
+  bool scrollPage(uint8_t nTile, int16_t nDelta);
   void formatButtons(Tile& pTile);
   void drawButton(Tile& pTile, Button *pBtn, bool bPressed);
   void buttonCmd(Button *pBtn, bool bRepeat);
@@ -271,8 +275,8 @@ Tile layout
         {2, 0, 0, BTF_PC_Media,       "Play",  {0}, 60, 32, {0,0}},
         {3, 0, BF_REPEAT, BTF_PC_Media, NULL,  {i_rt, 0}, 32, 32, {2,0}},
         {4, 1, 0, BTF_PC_Media,        "STOP", {0}, 60, 32, {1,0}},
-        {5, 2, 0, BTF_PC_Media,        "Mute", {0}, 60, 32, {4,0}},
-        {6, 3, BF_SLIDER_H, BTF_PC_Media, "",  {0}, 120, 32, {1001,0}},
+        {5, 2, BF_SLIDER_H, BTF_PC_Media, "",  {0}, 120, 32, {1001,0}},
+        {6, 3, 0, BTF_PC_Media,        "Mute", {0}, 60, 32, {4,0}},
       }
     },
     //
@@ -360,10 +364,15 @@ Tile layout
   uint8_t  m_bright; // current brightness
   uint8_t  m_nTileCnt;
   int8_t   m_nCurrTile; // start screen
+  Button  *m_pCurrBtn; // for button repeats and release
+  uint32_t m_lastms; // for button repeats
   uint32_t m_nDispFreeze;
   uint8_t  m_nRowStart[TILES]; // index of screen at row
   uint8_t  m_nColCnt[TILES]; // column count for each row of screens
   uint16_t m_sleepTimer;
+  int16_t  m_swipePos;
+  bool     m_bSwipeReady;
+  uint8_t  m_nLastTile;
 
 #define NOTE_CNT 10
   const char *m_pszNotifs[NOTE_CNT + 1];
