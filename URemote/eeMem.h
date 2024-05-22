@@ -14,15 +14,16 @@ struct iotLight
 class eeMem
 {
 public:
-  eeMem();
+  eeMem(){};
+  void init(void);
   bool check(void);
   bool update(void);
   uint16_t getSum(void);
   uint16_t Fletcher16( uint8_t* data, int count);
 
-public:
   uint16_t size = EESIZE;            // if size changes, use defaults
   uint16_t sum = 0xAAAA;             // if sum is different from memory struct, write
+  uint16_t nWriteCnt;               // just a counter for later checking
   char     szSSID[24] = "";  // Enter you WiFi router SSID
   char     szSSIDPassword[24] = ""; // and password
   char     iotPassword[24] = "password"; // password for controlling dimmers and switches
@@ -46,9 +47,10 @@ public:
   };
   uint8_t  reserved[56];           // Note: To force an EEPROM update, just subtract 1 byte and flash again
   uint8_t  end;
-}; // 512 bytes
 
-static_assert(EESIZE <= 512, "EEPROM struct too big");
+private:
+  bool m_bFsOpen;
+};
 
 extern eeMem ee;
 
