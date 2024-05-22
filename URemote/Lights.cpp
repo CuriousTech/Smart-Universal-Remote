@@ -3,6 +3,7 @@
 
 #include "Lights.h"
 #include "Display.h"
+#include "uriString.h"
 
 extern Display display;
 
@@ -32,16 +33,14 @@ bool Lights::setSwitch(int8_t nSwitch, bool bPwr, uint8_t nLevel)
 
   IPAddress ip(ee.lights[m_nSwitch].ip);
 
-  String s = "/wifi?key=";
-  s += ee.iotPassword;
-  s += "&pwr0=";
-  s += bPwr ? 1:0;
+  uriString uri("/wifi");
+  uri.Param("key", ee.iotPassword);
+  uri.Param("pwr0", bPwr ? 1:0);
   if(nLevel)
   {
-    s += "&level=";
-    s += nLevel << 1;
+    uri.Param("level", nLevel << 1); // dimmers are 1-200
   }
-  if(send(ip, 80, s.c_str()) )
+  if(send(ip, 80, uri.string().c_str()) )
   {
     m_bOn[m_nSwitch][0] = bPwr;
     if(nLevel)
