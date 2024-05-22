@@ -165,7 +165,7 @@ private:
   void drawTile(int8_t nTile, bool bFirst);
   bool scrollPage(uint8_t nTile, int16_t nDelta);
   void formatButtons(Tile& pTile);
-  void drawButton(Tile& pTile, Button *pBtn, bool bPressed);
+  void drawButton(Tile& pTile, Button *pBtn, bool bPressed, bool bErase);
   void buttonCmd(Button *pBtn, bool bRepeat);
   void sliderCmd(uint8_t nFunc, uint8_t nNewVal);
   void dimmer(void);
@@ -373,6 +373,8 @@ Tile layout
   int16_t  m_swipePos;
   bool     m_bSwipeReady;
   uint8_t  m_nLastTile;
+  uint8_t  m_nCurrRow;
+  uint8_t  m_nLastRow;
 
 #define NOTE_CNT 10
   const char *m_pszNotifs[NOTE_CNT + 1];
