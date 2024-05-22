@@ -1,4 +1,4 @@
-RC  TSSOP34838 (or other 38kHz IR receiver)
+RC  TSOP394388
 R1  110 ohm 0805
 R2  1K 0805
 C1  1uF 0805
