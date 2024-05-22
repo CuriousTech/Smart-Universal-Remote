@@ -12,6 +12,8 @@ Display and UI code
 #include <FunctionalInterrupt.h>
 #include <math.h>
 
+static_assert((USER_SETUP_ID==46), "Wrong TFT_eSPI user setup");
+
 #include "QMI8658.h"
 
 TFT_eSPI tft = TFT_eSPI();
@@ -112,15 +114,11 @@ void Display::exitScreensaver()
 
 void Display::service(void)
 {
-  static Button *pCurrBtn; // for button repeats and release
-  static uint32_t lastms; // for button repeats
-
   if( m_int1Triggered) // may be used later
   {
     m_int1Triggered = false;
     ets_printf("INT1\n");
     m_backlightTimer = ee.ssTime; // reset timer for any touch
-//    endSleep();
   }
 
   if( m_int2Triggered) // set for IMU WOM
@@ -139,8 +137,6 @@ void Display::service(void)
     {
       endSleep();
       m_backlightTimer = ee.ssTime;
-//      if( m_brightness < ee.brightLevel[1] )
-//        exitScreensaver();
     }
     else
       return;
@@ -167,32 +163,7 @@ void Display::service(void)
 
   if(touch.available() )
   {
-    if(touch.event == 1) // release
-    {
-      if(!bSliderHit)
-      {
-        if((int16_t)touch.y - (int16_t)touchYstart > 14)
-          touch.gestureID = SWIPE_DOWN;
-        else if((int16_t)touch.y - (int16_t)touchYstart < -14)
-          touch.gestureID = SWIPE_UP;
-        else if((int16_t)touch.x - (int16_t)touchXstart > 14)
-          touch.gestureID = SWIPE_RIGHT;
-        else if((int16_t)touch.x - (int16_t)touchXstart < -14)
-          touch.gestureID = SWIPE_LEFT;
-      }
-
-      if(pCurrBtn)
-      {
-        drawButton(m_tile[m_nCurrTile], pCurrBtn, false); // draw released button
-        sprite.pushSprite(0, 0);
-        pCurrBtn = NULL;
-      }
-      else if(touch.gestureID)
-      {
-        swipeTile();
-      }
-    }
-    else if(touch.event == 0) // initial touch
+    if(touch.event == 0) // initial touch
     {
       touchXstart = touch.x;
       touchYstart = touch.y;
@@ -207,6 +178,24 @@ void Display::service(void)
       {
         exitScreensaver();
         endSleep();
+      }
+    }
+    else if(touch.event == 1) // release
+    {
+      if(m_pCurrBtn)
+      {
+        drawButton(m_tile[m_nCurrTile], m_pCurrBtn, false); // draw released button
+        sprite.pushSprite(0, 0);
+        m_pCurrBtn = NULL;
+      }
+      else if(touch.gestureID)
+      {
+        snapTile(); // finish the swipe (only forward for now)
+        touch.gestureID = 0; // unlock the idle display updates
+      }
+      else if(bScrolling == false) // check for a quick button hit if nothing else appeared to happen
+      {
+        checkButtonHit(touchXstart, touchYstart);
       }
     }
     else // 2=active
@@ -234,82 +223,67 @@ void Display::service(void)
       }
 
       if(bSliderHit);
+      else if(touch.gestureID) // swiping mode
+      {
+        swipeTile(touch.x - touchXstart, touch.y - touchYstart);
+        touchXstart = touch.x;
+        touchYstart = touch.y;        
+      }
       else if(bScrolling) // scrolling detected
       {
         if(touch.y - touchYstart)
-          scrollPage(m_nCurrTile, touch.y - touchYstart);
+          bScrolling = scrollPage(m_nCurrTile, touch.y - touchYstart);
         touchYstart = touch.y;
       }
       else // normal press or hold
       {
-        if(millis() - touchStartMS < 100 && touch.gestureID == 0) // delay a bit
-        {
-
-        }
-        else if(pCurrBtn == NULL) // check button hit
-        {
-          Button *pBtn = &pTile.button[0];
-          for(uint8_t i = 0; pBtn[i].x; i++) // check for press in button bounds without slide
-          {
-            int16_t y = pBtn[i].y;
-
-            if( !(pBtn->flags & BF_FIXED_POS) ) // adjust for scroll offset
-              y -= pTile.nScrollIndex;
-  
-            if ( (touch.x >= pBtn[i].x && touch.x <= pBtn[i].x + pBtn[i].w && touch.y >= y && touch.y <= y + pBtn[i].h)
-               && (touchXstart >= pBtn[i].x && touchXstart <= pBtn[i].x + pBtn[i].w && touchYstart >= y && touchYstart <= y + pBtn[i].h) ) // make sure not swiping
-            {
-              pCurrBtn = &pBtn[i];
-
-              if(pCurrBtn->flags & BF_SLIDER_H)
-              {
-                uint8_t off = touch.x - pCurrBtn->x;
-                pCurrBtn->data[1] = off * 100 / pCurrBtn->w;
-              }
-              if(pCurrBtn->flags & BF_SLIDER_V)
-              {
-                uint8_t off = touch.y - pCurrBtn->y;
-                pCurrBtn->data[1] = off * 100 / pCurrBtn->h;
-              }
-              drawButton(pTile, pCurrBtn, true); // draw pressed state
-              sprite.pushSprite(0, 0);
-              buttonCmd(pCurrBtn, false);
-              lastms = millis() - 300; // slow first repeat (300+300ms)
-              break;
-            }
-          }
-        }
-        else if(millis() - lastms > 300) // repeat speed
-        {
-          if(pCurrBtn && (pCurrBtn->flags & (BF_REPEAT|BF_SLIDER_H|BF_SLIDER_V)) )
-          {
-            if(pCurrBtn->flags & BF_SLIDER_H)
-            {
-              uint8_t off = touch.x - pCurrBtn->x;
-              pCurrBtn->data[1] = off * 100 / pCurrBtn->w;
-              drawButton(pTile, pCurrBtn, true);
-              sprite.pushSprite(0, 0);
-            }
-            if(pCurrBtn->flags & BF_SLIDER_V)
-            {
-              uint8_t off = touch.y - pCurrBtn->y;
-              pCurrBtn->data[1] = off * 100 / pCurrBtn->h;
-              drawButton(pTile, pCurrBtn, true);
-              sprite.pushSprite(0, 0);
-            }
-            buttonCmd(pCurrBtn, true);
-          }
-          lastms = millis();
-        }
-
-        if( pTile.Extras & EX_SCROLL )
+        if( pTile.Extras & EX_SCROLL ) // give this a bit more priority
         {
           if( touchYstart > 40 && touchYstart < DISPLAY_HEIGHT - 40 && touch.y != touchYstart && (touch.y - touchYstart < 10 || touchYstart - touch.y < 10)) // slow/short flick
           {
             if( touchXstart > 40 && touchXstart < DISPLAY_WIDTH - 40) // start needs to be in the middle somewhere
-              bScrolling = true;
+            {
+              bScrolling = scrollPage(m_nCurrTile, touch.y - touchYstart); // test it
+//              if(bScrolling)
+//                touch.gestureID = 0;
+              touchYstart = touch.y;
+            }
           }
         }
+
+        if(millis() - touchStartMS < 100 && touch.gestureID == 0 && bScrolling == false) // delay a bit
+        {
+          swipeCheck((int16_t)touch.x - (int16_t)touchXstart, (int16_t)touch.y - (int16_t)touchYstart);
+          if(touch.gestureID)
+            startSwipe();
+        }
+        else if(m_pCurrBtn == NULL && touch.gestureID == 0 && bScrolling == false) // check button hit
+        {
+          checkButtonHit(touchXstart, touchYstart);
+        }
+        else if(millis() - m_lastms > 300) // repeat speed
+        {
+          if(m_pCurrBtn && (m_pCurrBtn->flags & (BF_REPEAT|BF_SLIDER_H|BF_SLIDER_V)) )
+          {
+            if(m_pCurrBtn->flags & BF_SLIDER_H)
+            {
+              uint8_t off = touch.x - m_pCurrBtn->x;
+              m_pCurrBtn->data[1] = off * 100 / m_pCurrBtn->w;
+              drawButton(pTile, m_pCurrBtn, true);
+              sprite.pushSprite(0, 0);
+            }
+            if(m_pCurrBtn->flags & BF_SLIDER_V)
+            {
+              uint8_t off = touch.y - m_pCurrBtn->y;
+              m_pCurrBtn->data[1] = off * 100 / m_pCurrBtn->h;
+              drawButton(pTile, m_pCurrBtn, true);
+              sprite.pushSprite(0, 0);
+            }
+            buttonCmd(m_pCurrBtn, true);
+          }
+          m_lastms = millis();
+        }
+
       }
     }
   }
@@ -332,6 +306,61 @@ void Display::service(void)
     {
       rgb[i] += random(-3, 6);
       rgb[i] = (uint8_t)constrain(rgb[i], 2, 255);
+    }
+  }
+}
+
+void Display::swipeCheck(int16_t dX, int16_t dY)
+{
+  if(dX == 0 && dY == 0)
+    return;
+
+  if(dX == 0)
+      touch.gestureID = (dY > 0) ? SWIPE_DOWN : SWIPE_UP;
+  else if(dY == 0)
+      touch.gestureID = (dX > 0) ? SWIPE_RIGHT : SWIPE_LEFT;
+  else if(dX > 0 && dY > 0)
+      touch.gestureID = (dX > dY) ? SWIPE_DOWN : SWIPE_RIGHT;
+  else if(dX > 0 && dY < 0)
+      touch.gestureID = (dX > dY) ? SWIPE_RIGHT : SWIPE_DOWN;
+  else if(dX < 0 && dY < 0)
+      touch.gestureID = (dX > dY) ? SWIPE_UP : SWIPE_LEFT;
+  else  // -dX +dY
+      touch.gestureID = (-dX > dY) ? SWIPE_LEFT : SWIPE_DOWN;
+}
+
+void Display::checkButtonHit(int16_t touchXstart, int16_t touchYstart)
+{
+  Tile& pTile = m_tile[m_nCurrTile];
+  Button *pBtn = &pTile.button[0];
+
+  for(uint8_t i = 0; pBtn[i].x; i++) // check for press in button bounds without slide
+  {
+    int16_t y = pBtn[i].y;
+
+    if( !(pBtn->flags & BF_FIXED_POS) ) // adjust for scroll offset
+      y -= pTile.nScrollIndex;
+
+    if ( (touch.x >= pBtn[i].x && touch.x <= pBtn[i].x + pBtn[i].w && touch.y >= y && touch.y <= y + pBtn[i].h)
+       && (touchXstart >= pBtn[i].x && touchXstart <= pBtn[i].x + pBtn[i].w && touchYstart >= y && touchYstart <= y + pBtn[i].h) ) // make sure not swiping
+    {
+      m_pCurrBtn = &pBtn[i];
+
+      if(m_pCurrBtn->flags & BF_SLIDER_H)
+      {
+        uint8_t off = touch.x - m_pCurrBtn->x;
+        m_pCurrBtn->data[1] = off * 100 / m_pCurrBtn->w;
+      }
+      if(m_pCurrBtn->flags & BF_SLIDER_V)
+      {
+        uint8_t off = touch.y - m_pCurrBtn->y;
+        m_pCurrBtn->data[1] = off * 100 / m_pCurrBtn->h;
+      }
+      drawButton(pTile, m_pCurrBtn, true); // draw pressed state
+      sprite.pushSprite(0, 0);
+      buttonCmd(m_pCurrBtn, false);
+      m_lastms = millis() - 300; // slow first repeat (300+300ms)
+      break;
     }
   }
 }
@@ -365,11 +394,15 @@ void Display::endSleep()
     btStart();
 }
 
-// swipe effects
-void Display::swipeTile()
+void Display::startSwipe()
 {
   static uint8_t nCurrRow;
   uint8_t nRowOffset;
+
+  m_bSwipeReady = false;
+  m_swipePos = 0;
+
+  m_nLastTile = m_nCurrTile; // save for snap
 
   switch(touch.gestureID)
   {
@@ -384,14 +417,8 @@ void Display::swipeTile()
 
       m_nCurrTile--;
       drawTile(m_nCurrTile, true);
-      for(int16_t i = -DISPLAY_WIDTH; i <= 0; i += 12)
-      {
-         // Push a windowed area of the sprite to the TFT at tx, ty
-        //  bool     pushSprite(int32_t tx, int32_t ty, int32_t sx, int32_t sy, int32_t sw, int32_t sh);
-        
-        sprite2.pushSprite(i + DISPLAY_WIDTH, 0);
-        sprite.pushSprite(i, 0);
-      }
+      m_bSwipeReady = true;
+      m_swipePos = 0;
       break;
     case SWIPE_LEFT:
       if(m_nCurrTile >= m_nTileCnt - 1) // don't scroll if button pressed or last screen
@@ -404,11 +431,8 @@ void Display::swipeTile()
 
       m_nCurrTile++;
       drawTile(m_nCurrTile, true);
-      for(int16_t i = DISPLAY_WIDTH; i >= 0; i -= 12)
-      {
-        sprite2.pushSprite(i - DISPLAY_WIDTH, 0);
-        sprite.pushSprite(i, 0);
-      }
+      m_bSwipeReady = true;
+      m_swipePos = DISPLAY_WIDTH;
       break;
     case SWIPE_DOWN:
       if(m_nCurrTile == 0 || nCurrRow == 0) // don't slide up from top
@@ -421,11 +445,8 @@ void Display::swipeTile()
       sprite.pushToSprite(&sprite2, 0, 0); // copy to temp sprite
 
       drawTile(m_nCurrTile, true);
-      for(int16_t i = -DISPLAY_HEIGHT; i <= 0; i += 12)
-      {
-        sprite2.pushSprite(0, i + DISPLAY_HEIGHT);
-        sprite.pushSprite(0, i);
-      }
+      m_bSwipeReady = true;
+      m_swipePos = 0;
       break;
     case SWIPE_UP:
       nRowOffset = m_nCurrTile - m_nRowStart[nCurrRow];
@@ -437,13 +458,99 @@ void Display::swipeTile()
       }
       sprite.pushToSprite(&sprite2, 0, 0); // copy to temp sprite
       drawTile(m_nCurrTile, true);
-      for(int16_t i = DISPLAY_HEIGHT; i >= 0; i -= 12)
+      m_bSwipeReady = true;
+      m_swipePos = DISPLAY_HEIGHT;
+      break;
+  }
+}
+
+// swipe effect
+void Display::swipeTile(int16_t dX, int16_t dY)
+{
+  if(m_bSwipeReady == false)
+    return;
+
+  switch(touch.gestureID)
+  {
+    case SWIPE_RIGHT:
+      m_swipePos = constrain(m_swipePos + dX, 0, DISPLAY_WIDTH);
+      sprite2.pushSprite(m_swipePos, 0);
+      sprite.pushSprite(m_swipePos - DISPLAY_WIDTH, 0);
+      break;
+    case SWIPE_LEFT:
+      m_swipePos = constrain(m_swipePos + dX, 0, DISPLAY_WIDTH);
+      sprite2.pushSprite(m_swipePos - DISPLAY_WIDTH, 0);
+      sprite.pushSprite(m_swipePos, 0);
+      break;
+    case SWIPE_DOWN:
+      m_swipePos = constrain(m_swipePos + dY, 0, DISPLAY_HEIGHT);
+      sprite2.pushSprite(0, m_swipePos);
+      sprite.pushSprite(0, m_swipePos - DISPLAY_HEIGHT);
+      break;
+    case SWIPE_UP:
+      m_swipePos = constrain(m_swipePos + dY, 0, DISPLAY_HEIGHT);
+      sprite2.pushSprite(0, m_swipePos - DISPLAY_HEIGHT);
+      sprite.pushSprite(0, m_swipePos);
+      break;
+  }
+}
+
+void Display::snapTile()
+{
+  if(m_bSwipeReady == false)
+    return;
+
+// Todo: Use m_nOldTile to snap back if moved <50%
+
+  switch(touch.gestureID)
+  {
+    case SWIPE_RIGHT:
+      while( m_swipePos < DISPLAY_WIDTH)
       {
-        sprite2.pushSprite(0, 0, 0, DISPLAY_HEIGHT - i, DISPLAY_WIDTH, i); // TFT_eSPI crops so this is no faster
-        sprite.pushSprite(0, i, 0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT - i);
+        if(m_swipePos < DISPLAY_WIDTH - 12)
+          m_swipePos += 12;
+        else
+          m_swipePos = DISPLAY_WIDTH;
+        sprite2.pushSprite(m_swipePos, 0);
+        sprite.pushSprite(m_swipePos - DISPLAY_WIDTH, 0);
+      }
+      break;
+    case SWIPE_LEFT:
+      while( m_swipePos > 0)
+      {
+        if(m_swipePos > 12)
+          m_swipePos -= 12;
+        else
+          m_swipePos = 0;
+        sprite2.pushSprite(m_swipePos - DISPLAY_WIDTH, 0);
+        sprite.pushSprite(m_swipePos, 0);
+      }
+      break;
+    case SWIPE_DOWN:
+      while( m_swipePos < DISPLAY_HEIGHT)
+      {
+        if(m_swipePos < DISPLAY_HEIGHT - 12)
+          m_swipePos += 12;
+        else
+          m_swipePos = DISPLAY_HEIGHT;
+
+        sprite2.pushSprite(0, m_swipePos);
+        sprite.pushSprite(0, m_swipePos - DISPLAY_HEIGHT);
+      }
+      break;
+    case SWIPE_UP:
+      while( m_swipePos > 0)
+      {
+        if(m_swipePos > 12)
+          m_swipePos -= 12;
+        else
+          m_swipePos = 0;
+        sprite2.pushSprite(0, m_swipePos - DISPLAY_HEIGHT);
+        sprite.pushSprite(0, m_swipePos);
       }
       break;
   }
+
 }
 
 void IRAM_ATTR Display::handleISR1(void)
@@ -458,7 +565,7 @@ void IRAM_ATTR Display::handleISR2(void)
 // called each second
 void Display::oneSec()
 {
-  if(m_bSleeping || m_nDispFreeze) // don't overwrite the popup
+  if(m_bSleeping || m_nDispFreeze || touch.gestureID) // don't overwrite the popup or while swiping
     return;
 
   if( m_backlightTimer ) // the dimmer thing
@@ -475,7 +582,7 @@ void Display::oneSec()
     }
   }
 
-  if(m_brightness > ee.brightLevel[0] && m_nDispFreeze == 0) // not screensaver
+  if(m_brightness > ee.brightLevel[0]) // not screensaver
   {
     drawTile(m_nCurrTile, false);
     sprite.pushSprite(0,0);
@@ -569,14 +676,11 @@ bool Display::snooze(uint32_t ms)
 }
 
 // scrolling oversized tiles and notification list
-void Display::scrollPage(uint8_t nTile, int16_t nDelta)
+bool Display::scrollPage(uint8_t nTile, int16_t nDelta)
 {
   Tile& pTile = m_tile[nTile];
-
-  if( !(pTile.Extras & EX_SCROLL) )
-    return;
-
   uint8_t nViewSize = DISPLAY_HEIGHT;
+
   if(pTile.pszTitle && pTile.pszTitle[0])
     nViewSize -= TITLE_HEIGHT;
 
@@ -591,12 +695,13 @@ void Display::scrollPage(uint8_t nTile, int16_t nDelta)
   }
 
   if(pTile.nPageHeight <= nViewSize) // not large enough to scroll
-    return;
+    return false;
 
   pTile.nScrollIndex = constrain(pTile.nScrollIndex - nDelta, -TITLE_HEIGHT, pTile.nPageHeight - nViewSize);
 
   drawTile(nTile, false);
   sprite.pushSprite(0,0);
+  return true; // scrollable
 }
 
 // calculate positions of non-fixed buttons
@@ -837,23 +942,26 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed)
   if(yOffset < 10 || yOffset >= DISPLAY_HEIGHT) // cut off anything out of bounds (top is covered by title blank)
     return;
 
-  if(pBtn->pIcon[nState]) // draw an image if given
+  if(pBtn->flags & BF_SLIDER_H)
+  {
+    const uint8_t sz = 10;
+
+    sprite.drawWideLine(pBtn->x, yOffset + (pBtn->h/2), pBtn->x + pBtn->w, yOffset + (pBtn->h/2), 5, TFT_BLUE, TFT_BLACK);
+    sprite.drawSpot(pBtn->x + sz + pBtn->data[1] * (pBtn->w - sz*2) / 100, yOffset + 15, sz, TFT_YELLOW);
+  }
+  else if(pBtn->flags & BF_SLIDER_V)
+  {
+    const uint8_t sz = 10;
+
+    sprite.drawWideLine(pBtn->x + pBtn->w/2, yOffset, pBtn->x + pBtn->w/2, yOffset + pBtn->h, 5, TFT_BLUE, TFT_BLACK);
+    sprite.drawSpot(pBtn->x + 15, yOffset + sz + pBtn->data[1] * (pBtn->h - sz*2) / 100, sz, TFT_YELLOW);
+  }
+  else if(pBtn->pIcon[nState]) // draw an image if given
     sprite.pushImage(pBtn->x, yOffset, pBtn->w, pBtn->h, pBtn->pIcon[nState]);
   else if(pBtn->flags & BF_BORDER) // bordered text item
     sprite.drawRoundRect(pBtn->x, yOffset, pBtn->w, pBtn->h, 5, colorBg);
   else if(!(pBtn->flags & BF_TEXT) ) // if no image, or no image for state 2, and not just text, fill with a color
     sprite.fillRoundRect(pBtn->x, yOffset, pBtn->w, pBtn->h, 5, colorBg);
-
-  if(pBtn->flags & BF_SLIDER_H)
-  {
-    sprite.fillRoundRect(pBtn->x + 1, yOffset + 1, pBtn->data[1] * (pBtn->w - 2) / 100, pBtn->h - 2, 5, TFT_BLUE);
-  }
-
-  if(pBtn->flags & BF_SLIDER_V)
-  {
-    uint8_t yh = pBtn->data[1] * (pBtn->h - 2) / 100;
-    sprite.fillRoundRect(pBtn->x + 1, yOffset + 1 + yh, pBtn->w, pBtn->h - 2 - yh, 5, TFT_BLUE);
-  }
 
   if(s.length())
   {
