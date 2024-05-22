@@ -1,14 +1,26 @@
 #include "eeMem.h"
-#include <EEPROM.h>
+#include <FS.h>
+#include <FFat.h>
 
-eeMem::eeMem()
+void eeMem::init()
 {
-  EEPROM.begin(EESIZE);
-
   uint8_t data[EESIZE];
   uint16_t *pwTemp = (uint16_t *)data;
 
-  EEPROM.readBytes(0, &data, EESIZE);
+  m_bFsOpen = FFat.begin(true);
+
+  if(!m_bFsOpen)
+  {
+    ets_printf("FATFS failed\r\n");
+    return;
+  }
+
+  File F = FFat.open("/eemem.bin", "r");
+  if(F)
+  {
+    F.read(data, EESIZE);
+    F.close();
+  }
   if(pwTemp[0] != EESIZE)
     return; // revert to defaults if struct size changes
 
@@ -22,10 +34,20 @@ eeMem::eeMem()
 
 bool eeMem::update() // write the settings if changed
 {
-  if(!check()) // make sure sum is correct, and if save needed
+  if(!check() || m_bFsOpen == false) // make sure sum is correct, and if it can save
     return false;
-  EEPROM.writeBytes(0, this + offsetof(eeMem, size), EESIZE);
-  return EEPROM.commit();
+
+  nWriteCnt++;
+  check(); // recalc sum
+
+  File F = FFat.open("/eemem.bin", "w");
+  if(F)
+  {
+    F.write((byte*) this + offsetof(eeMem, size), EESIZE);
+    F.close();
+    return true;
+  }
+  return false;
 }
 
 bool eeMem::check()
