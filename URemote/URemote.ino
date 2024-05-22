@@ -22,7 +22,10 @@ SOFTWARE.
 */
 
 // Build with Arduino IDE 1.8.57.0
-//  ESP32: (2.0.13) ESP32S3 Dev Module, QIO, CPU Freq: 80MHz for lowest power (<60mA), Flash: 16MB, PSRAM: QSPI PSRAM, Partition: 16MB or Rainmaker.
+//  ESP32: (2.0.13) ESP32S3 Dev Module, QIO, CPU Freq: 80MHz for lowest power (<60mA),
+//  Flash: 16MB
+//  PSRAM: QSPI PSRAM
+//  Partition: 16MB (3MB APP/9.9 FATFS)
 
 #define OTA_ENABLE  //uncomment to enable Arduino IDE Over The Air update code (uses ~4K heap)
 #define SERVER_ENABLE // uncomment to enable server and WebSocket
@@ -32,6 +35,9 @@ SOFTWARE.
 #include <WiFi.h>
 #include <TimeLib.h> // http://www.pjrc.com/teensy/td_libs_Time.html
 #include <UdpTime.h> // https://github.com/CuriousTech/ESP07_WiFiGarageDoor/tree/master/libraries/UdpTime
+
+#include <FS.h>
+#include <FFat.h>
 #include "eeMem.h"
 #include <ESPmDNS.h>
 #ifdef OTA_ENABLE
@@ -39,7 +45,7 @@ SOFTWARE.
 #endif
 
 #ifdef SERVER_ENABLE
-#include <ESPAsyncWebServer.h> // https://github.com/me-no-dev/ESPAsyncWebServer
+#include <ESPAsyncWebServer.h> // https://github.com/mathieucarbou/ESPAsyncWebServer
 #include <JsonParse.h> // https://github.com/CuriousTech/ESP-HVAC/tree/master/Libraries/JsonParse
 #include "jsonString.h"
 #include "pages.h"
@@ -175,6 +181,7 @@ void stopWiFi()
 
 void startWiFi()
 {
+  ets_printf("startWiFi\r\n");
   if(WiFi.status() == WL_CONNECTED)
     return;
 
@@ -507,6 +514,8 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
 void setup()
 {
   ets_printf("Starting\n"); // print over USB
+
+  ee.init();
   display.init();
   if(ee.bWiFiEnabled)
     startWiFi();
