@@ -4538,7 +4538,7 @@ CONN_04
 <part name="LED1" library="led" library_urn="urn:adsk.eagle:library:259" deviceset="LED" device="5MM" package3d_urn="urn:adsk.eagle:package:15799/2"/>
 <part name="C1" library="SparkFun-Capacitors" deviceset="CAP" device="0805" value="1uF"/>
 <part name="GND2" library="supply1" deviceset="GND" device=""/>
-<part name="TSOP39438" library="SparkFun-Connectors" library_urn="urn:adsk.eagle:library:513" deviceset="CONN_04" device="1X04_NO_SILK" package3d_urn="urn:adsk.eagle:package:38094/1"/>
+<part name="TSOP39438" library="SparkFun-Connectors" library_urn="urn:adsk.eagle:library:513" deviceset="CONN_04" device="1.27MM" package3d_urn="urn:adsk.eagle:package:38086/1"/>
 </parts>
 <sheets>
 <sheet>
@@ -4601,18 +4601,18 @@ CONN_04
 <pinref part="C1" gate="G$1" pin="2"/>
 <wire x1="33.02" y1="76.2" x2="33.02" y2="73.66" width="0.1524" layer="91"/>
 <pinref part="GND2" gate="1" pin="GND"/>
-<pinref part="TSOP39438" gate="G$1" pin="1"/>
 <wire x1="33.02" y1="73.66" x2="33.02" y2="71.12" width="0.1524" layer="91"/>
 <wire x1="33.02" y1="73.66" x2="27.94" y2="73.66" width="0.1524" layer="91"/>
 <wire x1="27.94" y1="73.66" x2="27.94" y2="83.82" width="0.1524" layer="91"/>
 <junction x="33.02" y="73.66"/>
-<pinref part="TSOP39438" gate="G$1" pin="4"/>
 <wire x1="27.94" y1="91.44" x2="30.48" y2="91.44" width="0.1524" layer="91"/>
 <wire x1="30.48" y1="91.44" x2="30.48" y2="96.52" width="0.1524" layer="91"/>
 <wire x1="30.48" y1="96.52" x2="12.7" y2="96.52" width="0.1524" layer="91"/>
 <wire x1="12.7" y1="96.52" x2="12.7" y2="73.66" width="0.1524" layer="91"/>
 <wire x1="12.7" y1="73.66" x2="27.94" y2="73.66" width="0.1524" layer="91"/>
 <junction x="27.94" y="73.66"/>
+<pinref part="TSOP39438" gate="G$1" pin="1"/>
+<pinref part="TSOP39438" gate="G$1" pin="4"/>
 </segment>
 </net>
 <net name="N$3" class="0">
@@ -4633,8 +4633,8 @@ CONN_04
 <wire x1="33.02" y1="86.36" x2="35.56" y2="86.36" width="0.1524" layer="91"/>
 <wire x1="33.02" y1="83.82" x2="33.02" y2="86.36" width="0.1524" layer="91"/>
 <junction x="33.02" y="86.36"/>
-<pinref part="TSOP39438" gate="G$1" pin="2"/>
 <wire x1="27.94" y1="86.36" x2="33.02" y2="86.36" width="0.1524" layer="91"/>
+<pinref part="TSOP39438" gate="G$1" pin="2"/>
 </segment>
 <segment>
 <pinref part="R1" gate="G$1" pin="2"/>
