@@ -2,14 +2,6 @@
 #include <Arduino.h>
 #include <Wire.h>
 
-#define DEV_SDA_PIN     (6)
-#define DEV_SCL_PIN     (7)
-
-#define Touch_INT_PIN   (5)
-#define Touch_RST_PIN   (13)
-
-#define BAT_ADC_PIN     (1)
-
 #define QMI8658_UINT_MG_DPS
 
 enum
@@ -28,15 +20,18 @@ typedef struct
 } qst_imu_layout;
 
 
-bool QMI8658::init(void)
+bool QMI8658::init(int sda, int scl)
 {
+  _sda = sda;
+  _scl = scl;
+  
   uint8_t QMI8658_chip_id = 0x00;
   uint8_t QMI8658_revision_id = 0x00;
   uint8_t QMI8658_slave[2] = {QMI8658_SLAVE_ADDR_L, QMI8658_SLAVE_ADDR_H};
   uint8_t iCount = 0;
   int retry = 0;
 
-  Wire.setPins(DEV_SDA_PIN, DEV_SCL_PIN);
+  Wire.setPins(_sda, _scl);
   Wire.setClock(400000);
   Wire.begin();
 
@@ -317,6 +312,21 @@ void QMI8658::read_gyro_xyz(float gyro_xyz[3])
 	gyro_xyz[0] = (raw_gyro_xyz[0] * 1.0f) / gyro_lsb_div;
 	gyro_xyz[1] = (raw_gyro_xyz[1] * 1.0f) / gyro_lsb_div;
 	gyro_xyz[2] = (raw_gyro_xyz[2] * 1.0f) / gyro_lsb_div;
+}
+
+void QMI8658::read_mag_xyz(float mag_xyz[3])
+{
+  uint8_t buf_reg[6];
+  short raw_mag_xyz[3];
+
+  read_regs(QMI8658Register_Mx_L, buf_reg, 6);
+  raw_mag_xyz[0] = (short)((uint16_t)(buf_reg[1] << 8) | (buf_reg[0]));
+  raw_mag_xyz[1] = (short)((uint16_t)(buf_reg[3] << 8) | (buf_reg[2]));
+  raw_mag_xyz[2] = (short)((uint16_t)(buf_reg[5] << 8) | (buf_reg[4]));
+
+  mag_xyz[0] = (raw_mag_xyz[0] * 1.0f) / (1<<2);
+  mag_xyz[1] = (raw_mag_xyz[1] * 1.0f) / (1<<2);
+  mag_xyz[2] = (raw_mag_xyz[2] * 1.0f) / (1<<2);
 }
 
 void QMI8658::read_xyz(float acc[3], float gyro[3], unsigned int *tim_count)
