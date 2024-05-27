@@ -2,13 +2,19 @@
 #define DISPLAY_H
 
 #include <Arduino.h>
+#include <TFT_eSPI.h> // TFT_eSPI library from library manager?
 #include "arrows.h"
 
 // from 5-6-5 to 16 bit value (max 31, 63, 31)
 #define rgb16(r,g,b) ( ((uint16_t)r << 11) | ((uint16_t)g << 5) | (uint16_t)b )
 
 #define DISPLAY_WIDTH 240
+
+#if (USER_SETUP_ID==302) // 240x240
 #define DISPLAY_HEIGHT 240
+#else
+#define DISPLAY_HEIGHT 280
+#endif
 
 // todo: quick fix
 #ifndef _IR_PROTOCOL_H
@@ -107,7 +113,7 @@ struct Slider
   uint8_t  nFunc;         // see slider_func
   uint8_t  flags;         // see SFL_xx
   uint16_t nPos;          // angle from 12 o'clock
-  uint16_t nSize;
+  uint16_t nSize;         // Size in degrees
   uint8_t  nValue;        // 0-100 value of screen's slider
 };
 
@@ -119,10 +125,10 @@ struct Button
   uint8_t nFunction;     // see enum Button_Function
   const char *pszText;    // Button text
   const unsigned short *pIcon[2]; // Normal, pressed icons
-  uint8_t w;              // calculated if 0
-  uint8_t h;              // ""
-  uint16_t data[4];       // codes for IR, BT HID, etc
-  uint8_t x;
+  uint16_t w;              // calculated if 0
+  uint16_t h;              // ""
+  uint16_t data[4];       // codes for IR, BT HID, etc (1=slider value, 2=prev slider value)
+  uint16_t x;
   int16_t y; // y can go over 240 (scrollable pages)
 };
 
@@ -165,7 +171,7 @@ private:
   void drawTile(int8_t nTile, bool bFirst);
   bool scrollPage(uint8_t nTile, int16_t nDelta);
   void formatButtons(Tile& pTile);
-  void drawButton(Tile& pTile, Button *pBtn, bool bPressed, bool bErase);
+  void drawButton(Tile& pTile, Button *pBtn, bool bPressed);
   void buttonCmd(Button *pBtn, bool bRepeat);
   void sliderCmd(uint8_t nFunc, uint8_t nNewVal);
   void dimmer(void);
@@ -181,12 +187,8 @@ private:
   void endSleep(void);
   bool snooze(uint32_t ms);
 
-  void IRAM_ATTR handleISR1();
-  bool m_int1Triggered;
-  void IRAM_ATTR handleISR2();
-  bool m_int2Triggered;
-  void IRAM_ATTR handleTPISR();
-  bool m_tpintTriggered;
+  void IRAM_ATTR handleISR();
+  bool m_intTriggered;
 
 #define TILES 10
 /*
@@ -212,8 +214,8 @@ Tile layout
         { 1, 0, BF_FIXED_POS, BTF_RSSI, "", {0},  26, 26, {0}, (DISPLAY_WIDTH/2 - 26/2), 180 + 26},
         { 2, 0, BF_FIXED_POS|BF_TEXT, BTF_Time, "12:00:00 AM", {0}, 120, 32, {0}, DISPLAY_WIDTH/2-56, 50},
         { 3, 0, BF_FIXED_POS|BF_TEXT, BTF_Date,  "Jan 01", {0}, 80, 32, {0}, DISPLAY_WIDTH/2-40, 152},
-        { 4, 0, BF_FIXED_POS|BF_TEXT, BTF_DOW,   "Sun",  {0},  40, 32, {0}, 170, 105},
-        { 5, 0, BF_FIXED_POS|BF_TEXT, BTF_Volts, "4.20",  {0},  50, 32, {0}, 28, 105},
+        { 4, 0, BF_FIXED_POS|BF_TEXT, BTF_DOW,   "Sun",  {0},  40, 32, {0}, 170, DISPLAY_HEIGHT/2 - 15},
+        { 5, 0, BF_FIXED_POS|BF_TEXT, BTF_Volts, "4.20",  {0},  50, 32, {0}, 28, DISPLAY_HEIGHT/2 - 15},
       }
     },
     // tile 1 (left-most horizontal tile)
