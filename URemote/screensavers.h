@@ -4,9 +4,6 @@
 #include <Arduino.h>
 #include <TFT_eSPI.h>
 
-#define DISPLAY_WIDTH 240
-#define DISPLAY_HEIGHT 240
-
 enum Saver
 {
   SS_Lines,
@@ -56,6 +53,7 @@ static_assert( (sizeof(Star) * STARS) < BUFFER_SIZE, "m_buffer size too small");
 
 public:
   ScreenSavers(){};
+  void init(uint16_t w, uint16_t h);
   void select(int n);
   void run(void);
   uint8_t m_saver;
@@ -66,6 +64,9 @@ private:
   void resetBubble(Bubble& bubble);
   void Starfield(bool bInit);
   void resetStar(Star& star);
+
+  uint16_t m_nDisplayWidth;
+  uint16_t m_nDisplayHeight;
 
   uint8_t m_buffer[BUFFER_SIZE];
 };
