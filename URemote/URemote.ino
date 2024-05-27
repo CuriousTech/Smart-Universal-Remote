@@ -24,8 +24,8 @@ SOFTWARE.
 // Build with Arduino IDE 1.8.57.0
 //  ESP32: (2.0.13) ESP32S3 Dev Module, QIO, CPU Freq: 80MHz for lowest power (<60mA),
 //  Flash: 16MB
-//  PSRAM: QSPI PSRAM
 //  Partition: 16MB (3MB APP/9.9 FATFS)
+//  PSRAM: QSPI PSRAM
 
 #define OTA_ENABLE  //uncomment to enable Arduino IDE Over The Air update code (uses ~4K heap)
 #define SERVER_ENABLE // uncomment to enable server and WebSocket
@@ -73,8 +73,16 @@ void startListener(void);
 
 // GPIO 15-18 reserved for keypad
 
-#define IR_RECEIVE_PIN   21
-#define IR_SEND_PIN      33
+#if (USER_SETUP_ID==302) // 240x240
+ #define IR_RECEIVE_PIN   21
+ #define IR_SEND_PIN      33
+#else
+ #define IR_RECEIVE_PIN   44 // UART0  or 17,18
+ #define IR_SEND_PIN      43
+ #define PWR_HOLD         35 // pull high to keep bettery power on
+ #define PWR_BTN          36 // low=pressed
+#endif
+
 //#define DISABLE_CODE_FOR_RECEIVER // Disables restarting receiver after each send. Saves 450 bytes program memory and 269 bytes RAM if receiving functions are not used.
 #define EXCLUDE_EXOTIC_PROTOCOLS  // Saves around 240 bytes program memory if IrSender.write is used
 //#define SEND_PWM_BY_TIMER         // Disable carrier PWM generation in software and use (restricted) hardware PWM.
@@ -181,7 +189,7 @@ void stopWiFi()
 
 void startWiFi()
 {
-  ets_printf("startWiFi\r\n");
+//  ets_printf("startWiFi\r\n");
   if(WiFi.status() == WL_CONNECTED)
     return;
 
@@ -243,12 +251,12 @@ bool secondsWiFi() // called once per second
 
   if(!bConfigDone)
   {
-
     if( WiFi.smartConfigDone())
     {
       bConfigDone = true;
       connectTimer = now();
     }
+//  else ets_printf("wifi status=%d\n", WiFi.status());
   }
   if(bConfigDone)
   {
@@ -515,6 +523,11 @@ void setup()
 {
   ets_printf("Starting\n"); // print over USB
 
+#if (USER_SETUP_ID != 302) // should be 1.69" 240x280
+  pinMode(PWR_HOLD, OUTPUT);
+  digitalWrite(PWR_HOLD, HIGH); // hold power on
+#endif
+
   ee.init();
   display.init();
   if(ee.bWiFiEnabled)
@@ -622,8 +635,26 @@ void loop()
     if (--ssCnt == 0) // keepalive
       sendState();
   }
+
+#if (USER_SETUP_ID != 302) // 240x280
+  static bool bNewState;
+  static bool lbState;
+  static long debounce;
+
+  bNewState = digitalRead(PWR_BTN);
+  if (bNewState != lbState)
+    debounce = millis(); // reset on state change
+
+  if ((millis() - debounce) > 300)
+    if (bNewState == LOW) // holding down
+      digitalWrite(PWR_HOLD, LOW); // power off
+
+  lbState = bNewState;
+#endif
+
   delay(1);
 }
+
 
 // remote WebSocket for sending all commands to PC and recieving states
 // Thermostate and GDO go through this as well for speed
