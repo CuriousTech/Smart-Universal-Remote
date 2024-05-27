@@ -409,12 +409,14 @@ class QMI8658
 {
 public:
   QMI8658(){ }
-  bool init(void);
+  bool init(int sda, int scl);
 
   void Config_apply(struct QMI8658Config const *config);
   void enableSensors(uint8_t enableFlags);
   void read_acc_xyz(float acc_xyz[3]);
   void read_gyro_xyz(float gyro_xyz[3]);
+  void read_mag_xyz(float mag_xyz[3]);
+
   void read_xyz(float acc[3], float gyro[3], unsigned int *tim_count);
   void read_xyz_raw(int16_t raw_acc_xyz[3], int16_t raw_gyro_xyz[3], unsigned int *tim_count);
   void read_ae(float quat[4], float velocity[3]);
@@ -441,6 +443,8 @@ private:
   QMI8658Config QMI8658_config;
   uint8_t QMI8658_slave_addr = QMI8658_SLAVE_ADDR_L;
 
+  int _sda;
+  int _scl;
 };
 
 #endif
