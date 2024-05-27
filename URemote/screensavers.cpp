@@ -7,6 +7,12 @@ extern TFT_eSprite sprite;
 
 extern void consolePrint(String s); // for browser debug
 
+void ScreenSavers::init(uint16_t w, uint16_t h)
+{
+  m_nDisplayWidth = w;
+  m_nDisplayHeight = h;
+}
+
 void ScreenSavers::select(int n)
 {
   m_saver = n;
@@ -49,9 +55,9 @@ void ScreenSavers::run()
   if(ang <= 90) color = TFT_RED; // 25% left
   else if(ang <= 180) color = TFT_YELLOW; // 50% left
 
-  tft.drawArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 120, 117, 0, ang, color, TFT_BLACK, false);
+  tft.drawArc(m_nDisplayWidth >> 1, m_nDisplayHeight >> 1, 120, 117, 0, ang, color, TFT_BLACK, false);
   if(ang < 359)
-    tft.drawArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 120, 117, ang, 359, TFT_BLACK, TFT_BLACK, false); // remove the rest
+    tft.drawArc(m_nDisplayWidth >> 1, m_nDisplayHeight >> 1, 120, 117, ang, 359, TFT_BLACK, TFT_BLACK, false); // remove the rest
 }
 
 void ScreenSavers::Lines(bool bInit)
@@ -91,10 +97,10 @@ void ScreenSavers::Lines(bool bInit)
   tft.drawLine(line[next].x1, line[next].y1, line[next].x2, line[next].y2, TFT_BLACK);
 
   // add delta to positions
-  line[next].x1 = constrain(line[idx].x1 + delta.x1, 0, DISPLAY_WIDTH-1); // keep it on the screen
-  line[next].x2 = constrain(line[idx].x2 + delta.x2, 0, DISPLAY_WIDTH-1);
-  line[next].y1 = constrain(line[idx].y1 + delta.y1, 0, DISPLAY_HEIGHT-1);
-  line[next].y2 = constrain(line[idx].y2 + delta.y2, 0, DISPLAY_HEIGHT-1);
+  line[next].x1 = constrain(line[idx].x1 + delta.x1, 0, m_nDisplayWidth-1); // keep it on the screen
+  line[next].x2 = constrain(line[idx].x2 + delta.x2, 0, m_nDisplayWidth-1);
+  line[next].y1 = constrain(line[idx].y1 + delta.y1, 0, m_nDisplayHeight-1);
+  line[next].y2 = constrain(line[idx].y2 + delta.y2, 0, m_nDisplayHeight-1);
 
   for(uint8_t i = 0; i < 3; i++)
   {
@@ -111,10 +117,10 @@ void ScreenSavers::Lines(bool bInit)
   if(line[next].x2 == 0 && delta.x2 < 0) delta.x2 = -delta.x2;
   if(line[next].y1 == 0 && delta.y1 < 0) delta.y1 = -delta.y1;
   if(line[next].y2 == 0 && delta.y2 < 0) delta.y2 = -delta.y2;
-  if(line[next].x1 == DISPLAY_WIDTH-1 && delta.x1 > 0) delta.x1 = -delta.x1;
-  if(line[next].x2 == DISPLAY_WIDTH-1 && delta.x2 > 0) delta.x2 = -delta.x2;
-  if(line[next].y1 == DISPLAY_HEIGHT-1 && delta.y1 > 0) delta.y1 = -delta.y1;
-  if(line[next].y2 == DISPLAY_HEIGHT-1 && delta.y2 > 0) delta.y2 = -delta.y2;
+  if(line[next].x1 == m_nDisplayWidth-1 && delta.x1 > 0) delta.x1 = -delta.x1;
+  if(line[next].x2 == m_nDisplayWidth-1 && delta.x2 > 0) delta.x2 = -delta.x2;
+  if(line[next].y1 == m_nDisplayHeight-1 && delta.y1 > 0) delta.y1 = -delta.y1;
+  if(line[next].y2 == m_nDisplayHeight-1 && delta.y2 > 0) delta.y2 = -delta.y2;
   idx = next;
 }
 
@@ -152,8 +158,8 @@ void ScreenSavers::Bubbles(bool bInit)
     bubble[i].bsize += bubble[i].is;
     bubble[i].x += bubble[i].dx;
     bubble[i].y += bubble[i].dy;
-    bubble[i].x = constrain(bubble[i].x, 1, DISPLAY_WIDTH-1);
-    bubble[i].y = constrain(bubble[i].y, 1, DISPLAY_HEIGHT-1);
+    bubble[i].x = constrain(bubble[i].x, 1, m_nDisplayWidth-1);
+    bubble[i].y = constrain(bubble[i].y, 1, m_nDisplayHeight-1);
     tft.drawCircle(bubble[i].x, bubble[i].y, bubble[i].bsize, bubble[i].color );
   }
 }
@@ -165,8 +171,8 @@ void ScreenSavers::resetBubble(Bubble& bubble)
         TFT_YELLOW,TFT_WHITE,TFT_ORANGE,TFT_GREENYELLOW,TFT_PINK,
         TFT_GOLD,TFT_SILVER,TFT_SKYBLUE,TFT_VIOLET};
 
-  bubble.x = (int16_t)random(2, DISPLAY_WIDTH - 2);
-  bubble.y = (int16_t)random(2, DISPLAY_WIDTH - 2);
+  bubble.x = (int16_t)random(2, m_nDisplayWidth - 2);
+  bubble.y = (int16_t)random(2, m_nDisplayHeight - 2);
   bubble.dx = (int8_t)random(-3, 6);
   bubble.dy = (int8_t)random(-3, 6);
   bubble.bsize = 1;
@@ -192,7 +198,7 @@ void ScreenSavers::Starfield(bool bInit)
     star[i].y += star[i].dy;
     if(star[i].z < 255) star[i].z++;
 
-    if(star[i].x < 0 || star[i].x >= DISPLAY_WIDTH || star[i].y < 0 || star[i].y >= DISPLAY_HEIGHT )
+    if(star[i].x < 0 || star[i].x >= m_nDisplayWidth || star[i].y < 0 || star[i].y >= m_nDisplayHeight )
     {
       resetStar(star[i]);
     }
@@ -202,8 +208,8 @@ void ScreenSavers::Starfield(bool bInit)
 
 void ScreenSavers::resetStar(Star& star)
 {
-  star.x = DISPLAY_WIDTH/2;
-  star.y = DISPLAY_HEIGHT/2;
+  star.x = m_nDisplayWidth >> 1;
+  star.y = m_nDisplayHeight >> 1;
   star.dx = (float)random(-45, 90) / 100;
   star.dy = (float)random(-45, 90) / 100;
   star.z = 0;
