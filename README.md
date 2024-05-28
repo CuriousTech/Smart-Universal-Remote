@@ -13,7 +13,7 @@ Parts list:
   
 [AliExpress ESP32-S3-Touch-1.28](https://www.aliexpress.us/item/3256806026101753.html?spm=a2g0o.order_list.order_list_main.5.eb321802K7vxRh&gatewayAdapt=glo2usa) This includes the 12p connector with dupont ends.  
   
-[AliExpress ESP32-S3-Touch-1.69](https://www.aliexpress.us/item/3256806781994387.html?spm=a2g0o.order_list.order_list_main.5.6e661802Im2eg3&gatewayAdapt=glo2usa)  Or this one. Warning, though. The PSRAM on mine is nonfunctioning, and WiFi is sproratic at best, so I won't be using it. They both have the same main components, so it's probably just defective.  
+[AliExpress ESP32-S3-Touch-1.69](https://www.aliexpress.us/item/3256806781994387.html?spm=a2g0o.order_list.order_list_main.5.6e661802Im2eg3&gatewayAdapt=glo2usa)  Or this one. The code is not entirely functional yet. The PSRAM is QPI on this. FFat is failing to find the partion though, and crashes.  
   
 [eBay:Charger pad](https://www.ebay.com/itm/143351559508?var=442544081497) Select USB-C. These can be bought anywhere.  As shown, place it face down, which flips the connector so the wire/ribbon is on top. The edges of the pad can be bent because the wrapper is a bit oversized.  
 
