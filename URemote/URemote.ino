@@ -25,7 +25,10 @@ SOFTWARE.
 //  ESP32: (2.0.13) ESP32S3 Dev Module, QIO, CPU Freq: 80MHz for lowest power (<60mA),
 //  Flash: 16MB
 //  Partition: 16MB (3MB APP/9.9 FATFS)
+// For 1.28"
 //  PSRAM: QSPI PSRAM
+// For 1.69"
+//  PSRAM: QPI PSRAM
 
 #define OTA_ENABLE  //uncomment to enable Arduino IDE Over The Air update code (uses ~4K heap)
 #define SERVER_ENABLE // uncomment to enable server and WebSocket
@@ -53,10 +56,10 @@ SOFTWARE.
 AsyncWebServer server( 80 );
 AsyncWebSocket ws("/ws"); // access at ws://[esp ip]/ws
 int WsClientID;
-int WsPcClientID;
 void jsonCallback(int16_t iName, int iValue, char *psValue);
 JsonParse jsonParse(jsonCallback);
 #endif
+int WsPcClientID;
 
 #ifdef BLE_ENABLE
 #include <BleKeyboard.h> // https://github.com/T-vK/ESP32-BLE-Keyboard
@@ -120,9 +123,11 @@ UdpTime uTime;
 
 void consolePrint(String s)
 {
+#ifdef SERVER_ENABLE
   jsonString js("print");
   js.Var("text", s);
-  ws.textAll(js.Close());  
+  ws.textAll(js.Close());
+#endif
 }
 
 #if defined(SERVER_ENABLE) && !defined(DISABLE_CODE_FOR_RECEIVER)
@@ -176,11 +181,12 @@ void stopWiFi()
 #endif
 
   display.m_nWsConnected = 0;
+#ifdef SERVER_ENABLE
   WsClientID = 0;
   WsPcClientID = 0;
-
 #ifdef CLIENT_ENABLE
   wsClient.disconnect();
+#endif
 #endif
   
   WiFi.setSleep(true);
@@ -521,7 +527,8 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
 
 void setup()
 {
-  ets_printf("Starting\n"); // print over USB
+  ets_printf("\nStarting\n"); // print over USB
+  ets_printf("Free: %ld\n", heap_caps_get_free_size(MALLOC_CAP_8BIT) );
 
 #if (USER_SETUP_ID != 302) // should be 1.69" 240x280
   pinMode(PWR_HOLD, OUTPUT);
@@ -603,8 +610,10 @@ void loop()
             else
             {
               display.RingIndicator(1);
+#ifdef SERVER_ENABLE
               decodePrint( IrReceiver.decodedIRData.protocol, IrReceiver.decodedIRData.address, IrReceiver.decodedIRData.command,
                 IrReceiver.decodedIRData.decodedRawData, IrReceiver.decodedIRData.numberOfBits, IrReceiver.decodedIRData.flags);
+#endif
               IrReceiver.resume();
             }
         }
@@ -632,8 +641,10 @@ void loop()
         ee.update();
       }
     }
+#ifdef SERVER_ENABLE
     if (--ssCnt == 0) // keepalive
       sendState();
+#endif
   }
 
 #if (USER_SETUP_ID != 302) // 240x280
