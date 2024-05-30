@@ -39,7 +39,6 @@ SOFTWARE.
 #include <TimeLib.h> // http://www.pjrc.com/teensy/td_libs_Time.html
 #include <UdpTime.h> // https://github.com/CuriousTech/ESP07_WiFiGarageDoor/tree/master/libraries/UdpTime
 
-#include <FS.h>
 #include <FFat.h>
 #include "eeMem.h"
 #include <ESPmDNS.h>
@@ -81,9 +80,8 @@ void startListener(void);
  #define IR_SEND_PIN      33
 #else
  #define IR_RECEIVE_PIN   44 // UART0  or 17,18
+ #define IR_RECEIVE_PIN   17 // UART0  or 17,18
  #define IR_SEND_PIN      43
- #define PWR_HOLD         35 // pull high to keep bettery power on
- #define PWR_BTN          36 // low=pressed
 #endif
 
 //#define DISABLE_CODE_FOR_RECEIVER // Disables restarting receiver after each send. Saves 450 bytes program memory and 269 bytes RAM if receiving functions are not used.
@@ -193,67 +191,18 @@ void stopWiFi()
   bRestarted = false;
 }
 
-void startWiFi()
-{
-//  ets_printf("startWiFi\r\n");
-  if(WiFi.status() == WL_CONNECTED)
-    return;
-
-  WiFi.setSleep(false);
-
-  WiFi.hostname(hostName);
-  WiFi.mode(WIFI_STA);
-
-  if ( ee.szSSID[0] )
-  {
-    WiFi.begin(ee.szSSID, ee.szSSIDPassword);
-    WiFi.setHostname(hostName);
-    bConfigDone = true;
-    ets_printf("Start WiFi %s %s\n", ee.szSSID, ee.szSSIDPassword);
-  }
-  else
-  {
-    WiFi.beginSmartConfig();
-    display.notify("Use EspTouch");
-  }
-  connectTimer = now();
-
-#ifdef OTA_ENABLE
-  ArduinoOTA.setHostname(hostName);
-  ArduinoOTA.begin();
-  ArduinoOTA.onStart([]() {
-    display.notify("OTA Update");
-    ee.update();
-#ifdef SERVER_ENABLE
-    jsonString js("print");
-    js.Var("text", "OTA update started");
-    ws.textAll(js.Close());
-#endif
-    delay(100);
-  });
-#endif
-}
-
-void serviceWiFi()
-{
-#ifdef OTA_ENABLE
-// Handle OTA server.
-  ArduinoOTA.handle();
-#endif
-
-#ifdef CLIENT_ENABLE
-  wsClient.loop();
-#endif
-}
+const char *szWiFiStat[] = {
+    "IDLE", "NO_SSID_AVAIL", "SCAN_COMPLETED", "CONNECTED", "CONNECT_FAILED", "CONNECTION_LOST", "DISCONNECTED"
+};
 
 bool secondsWiFi() // called once per second
 {
   bool bConn = false;
 
-//  ets_printf("heap %d\n", ESP.getFreeHeap());
-
   if(display.m_bSleeping)
     return false;
+
+//  ets_printf("wifi status = %s\n", szWiFiStat[WiFi.status()]); // Wifi debugging
 
   if(!bConfigDone)
   {
@@ -262,7 +211,6 @@ bool secondsWiFi() // called once per second
       bConfigDone = true;
       connectTimer = now();
     }
-//  else ets_printf("wifi status=%d\n", WiFi.status());
   }
   if(bConfigDone)
   {
@@ -462,6 +410,92 @@ void jsonCallback(int16_t iName, int iValue, char *psValue)
       break;
   }
 }
+#endif
+
+void startWiFi()
+{
+//  ets_printf("startWiFi\r\n");
+  if(WiFi.status() == WL_CONNECTED)
+    return;
+
+  WiFi.setSleep(false);
+
+  WiFi.hostname(hostName);
+  WiFi.mode(WIFI_STA);
+
+  if ( ee.szSSID[0] )
+  {
+    WiFi.begin(ee.szSSID, ee.szSSIDPassword);
+    WiFi.setHostname(hostName);
+    bConfigDone = true;
+    ets_printf("Start WiFi %s %s\n", ee.szSSID, ee.szSSIDPassword);
+  }
+  else
+  {
+    WiFi.beginSmartConfig();
+    display.notify("Use EspTouch");
+  }
+  connectTimer = now();
+
+#ifdef OTA_ENABLE
+  ArduinoOTA.setHostname(hostName);
+  ArduinoOTA.begin();
+  ArduinoOTA.onStart([]() {
+    display.notify("OTA Update");
+    ee.update();
+#ifdef SERVER_ENABLE
+    jsonString js("print");
+    js.Var("text", "OTA update started");
+    ws.textAll(js.Close());
+#endif
+    delay(100);
+  });
+#endif
+
+#ifdef SERVER_ENABLE
+  static bool bInit = false;
+  if(!bInit)
+  {
+    bInit = true;
+    ws.onEvent(onWsEvent);
+    server.addHandler(&ws);
+  
+    server.on ( "/", HTTP_GET | HTTP_POST, [](AsyncWebServerRequest * request)
+    {
+      request->send_P( 200, "text/html", page1);
+    });
+  
+    server.onNotFound([](AsyncWebServerRequest * request) {
+      request->send(404);
+    });
+    server.on("/heap", HTTP_GET, [](AsyncWebServerRequest * request) {
+      request->send(200, "text/plain", String(ESP.getFreeHeap()));
+    });
+  
+    server.on("/favicon.ico", HTTP_GET, [](AsyncWebServerRequest * request) {
+      AsyncWebServerResponse *response = request->beginResponse_P(200, "image/x-icon", favicon, sizeof(favicon));
+      response->addHeader("Content-Encoding", "gzip");
+      request->send(response);
+    });
+    server.begin();
+    jsonParse.setList(jsonListCmd);
+  }
+#endif
+}
+
+void serviceWiFi()
+{
+#ifdef OTA_ENABLE
+// Handle OTA server.
+  ArduinoOTA.handle();
+#endif
+
+#ifdef CLIENT_ENABLE
+  wsClient.loop();
+#endif
+}
+
+#ifdef SERVER_ENABLE
 
 //this does basically nothing for now (but used for keepalive)
 String dataJson()
@@ -530,13 +564,9 @@ void setup()
   ets_printf("\nStarting\n"); // print over USB
   ets_printf("Free: %ld\n", heap_caps_get_free_size(MALLOC_CAP_8BIT) );
 
-#if (USER_SETUP_ID != 302) // should be 1.69" 240x280
-  pinMode(PWR_HOLD, OUTPUT);
-  digitalWrite(PWR_HOLD, HIGH); // hold power on
-#endif
-
   ee.init();
   display.init();
+
   if(ee.bWiFiEnabled)
     startWiFi();
 
@@ -548,31 +578,6 @@ void setup()
 #ifdef BLE_ENABLE
   if(ee.bBtEnabled)
     bleKeyboard.begin();
-#endif
-
-#ifdef SERVER_ENABLE
-  ws.onEvent(onWsEvent);
-  server.addHandler(&ws);
-
-  server.on ( "/", HTTP_GET | HTTP_POST, [](AsyncWebServerRequest * request)
-  {
-    request->send_P( 200, "text/html", page1);
-  });
-
-  server.onNotFound([](AsyncWebServerRequest * request) {
-    request->send(404);
-  });
-  server.on("/heap", HTTP_GET, [](AsyncWebServerRequest * request) {
-    request->send(200, "text/plain", String(ESP.getFreeHeap()));
-  });
-
-  server.on("/favicon.ico", HTTP_GET, [](AsyncWebServerRequest * request) {
-    AsyncWebServerResponse *response = request->beginResponse_P(200, "image/x-icon", favicon, sizeof(favicon));
-    response->addHeader("Content-Encoding", "gzip");
-    request->send(response);
-  });
-  server.begin();
-  jsonParse.setList(jsonListCmd);
 #endif
 }
 
@@ -646,22 +651,6 @@ void loop()
       sendState();
 #endif
   }
-
-#if (USER_SETUP_ID != 302) // 240x280
-  static bool bNewState;
-  static bool lbState;
-  static long debounce;
-
-  bNewState = digitalRead(PWR_BTN);
-  if (bNewState != lbState)
-    debounce = millis(); // reset on state change
-
-  if ((millis() - debounce) > 300)
-    if (bNewState == LOW) // holding down
-      digitalWrite(PWR_HOLD, LOW); // power off
-
-  lbState = bNewState;
-#endif
 
   delay(1);
 }
