@@ -49,14 +49,8 @@ extern void consolePrint(String s); // for browser debug
  #define TP_INT   14 // normally high
  #define TFT_BL   15
  #define BATTV     1
- #define BUZZ     33
- #define PWR_HOLD 35 // pull high to keep bettery power on
- #define PWR_BTN  36 // low=pressed
 
  #define DISPLAY_HEIGHT 280
-
- #include "music.h"
- Music mus;
 
 #endif
 
@@ -78,14 +72,17 @@ void Display::init(void)
   tft.init();
   tft.setTextPadding(8); 
 
-  sprite.createSprite(DISPLAY_WIDTH, DISPLAY_HEIGHT); // This uses over 115K RAM for 240x240
-  sprite2.createSprite(DISPLAY_WIDTH, DISPLAY_HEIGHT);
-
 #if (USER_SETUP_ID==302) // 240x240
   tft.setSwapBytes(true);
   sprite.setSwapBytes(true);
   sprite2.setSwapBytes(true);
 #endif
+
+  sprite.createSprite(DISPLAY_WIDTH, DISPLAY_HEIGHT); // This uses over 115K RAM for 240x240
+  
+  drawTile(m_nCurrTile, true);
+  sprite.pushSprite(0, 0); // draw screen 0 on start
+  sprite2.createSprite(DISPLAY_WIDTH, DISPLAY_HEIGHT);
 
   // count tiles, index rows, count columns, format the buttons
   uint8_t nRowIdx = 0;
@@ -98,9 +95,6 @@ void Display::init(void)
     formatButtons(m_tile[m_nTileCnt]);
   }
 
-  drawTile(m_nCurrTile, true);
-  sprite.pushSprite(0, 0); // draw screen 0 on start
-
   pinMode(IMU_INT, INPUT_PULLUP);
   qmi.init(I2C_SDA, I2C_SCL);
   touch.begin();
@@ -112,13 +106,9 @@ void Display::init(void)
 
   qmi.setWakeOnMotion(true); // set WOM (sets acc values)
   m_intTriggered = false;
-
+#ifdef SCREENSAVERS_H
   randomSeed(micros());
   ss.init(DISPLAY_WIDTH, DISPLAY_HEIGHT);
-
-#ifdef BUZZ
-  mus.init(BUZZ);
-  mus.play(1);
 #endif
 }
 
@@ -172,9 +162,6 @@ void Display::service(void)
   if(m_brightness == ee.brightLevel[0]) // full dim activates screensaver
     ss.run();
 #endif
-#ifdef BUZZ
-  mus.service(); // sound handler
-#endif
 
   static bool bScrolling; // scrolling active
   static bool bSliderHit;
@@ -217,6 +204,7 @@ void Display::service(void)
       else if(touch.gestureID)
       {
         snapTile(); // finish the swipe (only forward for now)
+        m_bSwipeReady = false;
         touch.gestureID = 0; // unlock the idle display updates
       }
       else if(bScrolling == false) // check for a quick button hit if nothing else appeared to happen
@@ -446,8 +434,6 @@ void Display::startSwipe()
       if(m_tile[m_nCurrTile].nRow != m_tile[m_nCurrTile-1].nRow) // don't scroll left if leftmost
         break;
 
-      ets_printf("SR %d\n", m_nCurrTile);
-
       sprite.pushToSprite(&sprite2, 0, 0); // copy to temp sprite
 
       m_nLastTile = m_nCurrTile; // save for snap
@@ -463,7 +449,6 @@ void Display::startSwipe()
       if(m_tile[m_nCurrTile].nRow != m_tile[m_nCurrTile+1].nRow) // don't scroll right if rightmost
         break;
   
-      ets_printf("SL %d\n", m_nCurrTile);
       sprite.pushToSprite(&sprite2, 0, 0); // copy to temp sprite
 
       m_nLastTile = m_nCurrTile; // save for snap
@@ -476,7 +461,6 @@ void Display::startSwipe()
       if(m_nCurrTile == 0 || m_nCurrRow == 0) // don't slide up from top
         break;
   
-      ets_printf("SD %d\n", m_nCurrTile);
       nRowOffset = m_nCurrTile - m_nRowStart[m_nCurrRow];
       m_nLastRow = m_nCurrRow;
       m_nCurrRow--;
@@ -492,7 +476,6 @@ void Display::startSwipe()
       if(m_nCurrRow == m_nTileCnt-1)
         break;
 
-      ets_printf("SU %d\n", m_nCurrTile);
       nRowOffset = m_nCurrTile - m_nRowStart[m_nCurrRow];
       m_nLastRow = m_nCurrRow;
       m_nCurrRow++;
@@ -514,8 +497,6 @@ void Display::swipeTile(int16_t dX, int16_t dY)
 {
   if(m_bSwipeReady == false)
     return;
-
-      ets_printf("Swp %d\n", m_nCurrTile);
 
   switch(touch.gestureID)
   {
@@ -556,8 +537,6 @@ void Display::snapTile()
     m_nCurrTile = m_nLastTile; // revert to last positions
     m_nCurrRow = m_nLastRow;
 
-      ets_printf("SEB %d\n", m_nCurrTile);
-
     while(m_swipePos > 0)
     {
       if(m_swipePos > nSpeed)
@@ -587,8 +566,6 @@ void Display::snapTile()
     }
     return;
   }
-
-      ets_printf("SE %d\n", m_nCurrTile);
 
   uint16_t space = (touch.gestureID <= SWIPE_UP) ? DISPLAY_HEIGHT : DISPLAY_WIDTH;
 
@@ -1043,10 +1020,6 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed)
 // called when button is activated
 void Display::buttonCmd(Button *pBtn, bool bRepeat)
 {
-#ifdef BUZZ
-  mus.add(7000, 15);
-#endif
-
   switch(pBtn->nFunction)
   {
     case BTF_Lights:
