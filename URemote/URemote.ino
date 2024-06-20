@@ -22,7 +22,7 @@ SOFTWARE.
 */
 
 // Build with Arduino IDE 1.8.57.0
-//  ESP32: (2.0.13) ESP32S3 Dev Module, QIO, CPU Freq: 80MHz for lowest power (<60mA),
+//  ESP32: (2.0.14) ESP32S3 Dev Module, QIO, CPU Freq: 80MHz for lowest power (<60mA),
 //  Flash: 16MB
 //  Partition: 16MB (3MB APP/9.9 FATFS)
 // For 1.28"
@@ -80,7 +80,6 @@ void startListener(void);
  #define IR_SEND_PIN      33
 #else
  #define IR_RECEIVE_PIN   44 // UART0  or 17,18
- #define IR_RECEIVE_PIN   17 // UART0  or 17,18
  #define IR_SEND_PIN      43
 #endif
 
@@ -171,7 +170,7 @@ void stopWiFi()
   if(WiFi.status() != WL_CONNECTED)
     return;
 
-  ets_printf("stopWifi\n");
+//  ets_printf("stopWifi\n");
   ee.update();
 #ifdef OTA_ENABLE
   ArduinoOTA.end();
@@ -271,7 +270,7 @@ bool sendPCMediaCmd( uint16_t *pCode)
     js.Var("value", pCode[1]);
     WscSend(js.Close());
   }
-  if(pCode[0] == 1001)
+  else if(pCode[0] == 1001)
   {
     jsonString js("pos");
     js.Var("value", pCode[1]);
@@ -373,10 +372,10 @@ void jsonCallback(int16_t iName, int iValue, char *psValue)
         WsPcClientID = WsClientID;
       break;
     case 6: // PC_VOLUME
-      display.setSliderValue(SFN_PC, iValue);
+      display.setSliderValue(BTF_PCVolume, iValue);
       break;
     case 7: // PC_MED_POS
-      display.setButtonValue(BF_SLIDER_H, BTF_PC_Media, iValue);
+      display.setSliderValue(BTF_PC_Media, iValue);
       break;
     case 8: // LED
       digitalWrite(IR_SEND_PIN, iValue ? HIGH:LOW);
@@ -414,7 +413,7 @@ void jsonCallback(int16_t iName, int iValue, char *psValue)
 
 void startWiFi()
 {
-//  ets_printf("startWiFi\r\n");
+  // ets_printf("startWiFi\r\n");
   if(WiFi.status() == WL_CONNECTED)
     return;
 
@@ -428,7 +427,7 @@ void startWiFi()
     WiFi.begin(ee.szSSID, ee.szSSIDPassword);
     WiFi.setHostname(hostName);
     bConfigDone = true;
-    ets_printf("Start WiFi %s %s\n", ee.szSSID, ee.szSSIDPassword);
+//    ets_printf("Start WiFi %s %s\n", ee.szSSID, ee.szSSIDPassword);
   }
   else
   {
@@ -561,8 +560,11 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
 
 void setup()
 {
-  ets_printf("\nStarting\n"); // print over USB
-  ets_printf("Free: %ld\n", heap_caps_get_free_size(MALLOC_CAP_8BIT) );
+//  ets_printf("\nStarting\n"); // print over USB
+//  ets_printf("Free: %ld\n", heap_caps_get_free_size(MALLOC_CAP_8BIT) );
+
+  pinMode(IR_SEND_PIN, OUTPUT);
+  digitalWrite(IR_SEND_PIN, LOW);
 
   ee.init();
   display.init();
@@ -646,6 +648,9 @@ void loop()
         ee.update();
       }
     }
+//    String s = "ADC ";
+//    s += display.m_vadc;
+//    ws.textAll( s);
 #ifdef SERVER_ENABLE
     if (--ssCnt == 0) // keepalive
       sendState();
