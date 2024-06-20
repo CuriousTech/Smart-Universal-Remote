@@ -48,7 +48,8 @@ void ScreenSavers::run()
   }
 
   // battery meter
-  int16_t v = (display.m_bCharging) ? (display.m_vadc - 1283) * 360 /  (1802 - 1283): (display.m_vadc - 1283) * 360 /  (1550 - 1283);
+#if defined(ROUND_DISPLAY)
+  int16_t v = (display.m_bCharging) ? (display.m_vadc - 1283) * 360 /  (1802 - 1283) : (display.m_vadc - 1283) * 360 /  (1550 - 1283);
   int16_t ang = constrain( v, 0, 359);
 
   uint16_t color = (display.m_bCharging) ? TFT_BLUE:TFT_GREEN;
@@ -58,6 +59,21 @@ void ScreenSavers::run()
   tft.drawArc(m_nDisplayWidth >> 1, m_nDisplayHeight >> 1, 120, 117, 0, ang, color, TFT_BLACK, false);
   if(ang < 359)
     tft.drawArc(m_nDisplayWidth >> 1, m_nDisplayHeight >> 1, 120, 117, ang, 359, TFT_BLACK, TFT_BLACK, false); // remove the rest
+
+#else // 240x280
+  const uint16_t w = DISPLAY_WIDTH - 40;
+
+  int16_t pos = (display.m_bCharging) ? (display.m_vadc - 1283) * w /  (1639 - 1283) : (display.m_vadc - 1283) * w /  (1550 - 1283);
+  pos = constrain( pos, 0, w);
+
+  uint16_t color = (display.m_bCharging) ? TFT_BLUE:TFT_GREEN;
+  if(pos <= w>>2) color = TFT_RED; // 25% left
+  else if(pos <= w>>1) color = TFT_YELLOW; // 50% left
+
+  if(pos < w)
+    tft.drawWideLine(20 + pos, 15, DISPLAY_WIDTH - 20, 15, 4, TFT_DARKGREY, TFT_BLACK);
+  tft.drawWideLine(20, 15, 20 + pos, 15, 4, color, TFT_BLACK);
+#endif
 }
 
 void ScreenSavers::Lines(bool bInit)
