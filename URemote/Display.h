@@ -12,8 +12,11 @@
 
 #if (USER_SETUP_ID==302) // 240x240
 #define DISPLAY_HEIGHT 240
+#define VADC_MAX 1550
+#define ROUND_DISPLAY
 #else
 #define DISPLAY_HEIGHT 280
+#define VADC_MAX 1642 // 1623 = full
 #endif
 
 // todo: quick fix
@@ -56,6 +59,11 @@ typedef enum {
 enum Button_Function
 {
   BTF_None,
+  BTF_LightsDimmer,
+  BTF_PCVolume,
+  BTF_BT,
+  BTF_Brightness,
+
   BTF_IR,
   BTF_BLE,
   BTF_Lights,
@@ -97,18 +105,9 @@ enum Button_Function
 #define EX_NOTIF  (1 << 2)
 #define EX_SCROLL (1 << 3)
 
-enum slider_func
-{
-  SFN_None,
-  SFN_Lights,
-  SFN_PC,
-  SFN_BT,
-  SFN_Brightness,
-};
-
 #define SFL_REVERSE (1<<0)
 
-struct Slider
+struct ArcSlider
 {
   uint8_t  nFunc;         // see slider_func
   uint8_t  flags;         // see SFL_xx
@@ -128,7 +127,7 @@ struct Button
   uint16_t w;              // calculated if 0
   uint16_t h;              // ""
   uint16_t data[4];       // codes for IR, BT HID, etc (1=slider value, 2=prev slider value)
-  uint16_t x;
+  int16_t x;
   int16_t y; // y can go over 240 (scrollable pages)
 };
 
@@ -139,7 +138,7 @@ struct Tile
   const char *pszTitle;    // Top text
   uint8_t nRow;
   uint8_t Extras;           // See EX_ flags
-  Slider slider[SLIDER_CNT];
+  ArcSlider slider[SLIDER_CNT];
   int16_t nScrollIndex;     // page scrolling top offset
   uint16_t nPageHeight;     // height for page scrolling
   const unsigned short *pBGImage; // background image for screen
@@ -159,7 +158,6 @@ public:
   void exitScreensaver(void);
   void notify(char *pszNote);
   void setSliderValue(uint8_t st, int8_t iValue);
-  void setButtonValue(uint16_t flags, uint8_t fn, uint8_t iValue);
   void RingIndicator(uint8_t n);
 
 private:
@@ -167,21 +165,22 @@ private:
   void checkButtonHit(int16_t touchXstart, int16_t touchYstart);
   void startSwipe(void);
   void swipeTile(int16_t dX, int16_t dY);
+  void drawSwipeTiles(void);
   void snapTile(void);
-  void drawTile(int8_t nTile, bool bFirst);
+  void drawTile(int8_t nTile, bool bFirst, int16_t x, int16_t y);
   bool scrollPage(uint8_t nTile, int16_t nDelta);
   void formatButtons(Tile& pTile);
-  void drawButton(Tile& pTile, Button *pBtn, bool bPressed);
+  void drawButton(Tile& pTile, Button *pBtn, bool bPressed, int16_t x, int16_t y);
   void buttonCmd(Button *pBtn, bool bRepeat);
   void sliderCmd(uint8_t nFunc, uint8_t nNewVal);
   void dimmer(void);
-  void drawSlider(Slider& slider, uint8_t newValue);
-  void btnRSSI(Button *pBtn);
-  void drawNotifs(Tile& pTile);
-  void drawClock(void);
-  bool sliderHit(Slider& slider, uint8_t& value);
+  void drawArcSlider(ArcSlider& slider, uint8_t newValue, int16_t x, int16_t y);
+  void btnRSSI(Button *pBtn, int16_t x, int16_t y);
+  void drawNotifs(Tile& pTile, int16_t x, int16_t y);
+  void drawClock(int16_t x, int16_t y);
+  bool arcSliderHit(ArcSlider& slider, uint8_t& value);
 
-  void cspoint(uint16_t &x2, uint16_t &y2, uint16_t x, uint16_t y, float angle, float size);
+  void cspoint(int16_t &x2, int16_t &y2, int16_t x, int16_t y, float angle, float size);
 
   void startSleep(void);
   void endSleep(void);
@@ -206,7 +205,7 @@ Tile layout
       "",
       0, // row 0
       EX_CLOCK,
-      {{SFN_None},{SFN_None}},
+      {{BTF_None},{BTF_None}},
       0,
       0,
       0,//watchFace,
@@ -223,7 +222,7 @@ Tile layout
       "Power",
       1, // row 1
       EX_NONE,
-      {{SFN_None},{SFN_None}},
+      {{BTF_None},{BTF_None}},
       0,
       0,
       NULL,
@@ -240,7 +239,7 @@ Tile layout
       "TV",
       1,
       EX_NONE,
-      {{SFN_None},{SFN_None}},
+      {{BTF_None},{BTF_None}},
       0,
       0,
       NULL,
@@ -268,7 +267,11 @@ Tile layout
       "PC",
       1,
       EX_NONE,
-      {{SFN_PC, 0, 90, 90},{SFN_None}},
+#if defined(ROUND_DISPLAY) // round, use arc slider
+      {{BTF_PCVolume, 0, 90, 90},{BTF_None}},
+#else
+      {{BTF_None},{BTF_None}},
+#endif
       0,
       0,
       NULL,
@@ -279,6 +282,9 @@ Tile layout
         {4, 1, 0, BTF_PC_Media,        "STOP", {0}, 60, 32, {1,0}},
         {5, 2, BF_SLIDER_H, BTF_PC_Media, "",  {0}, 120, 32, {1001,0}},
         {6, 3, 0, BTF_PC_Media,        "Mute", {0}, 60, 32, {4,0}},
+#if !defined(ROUND_DISPLAY)
+        {7, 4, BF_SLIDER_V|BF_FIXED_POS, BTF_PCVolume, "",  {0}, 14, DISPLAY_HEIGHT - 80, {0}, DISPLAY_WIDTH-20, 40},
+#endif
       }
     },
     //
@@ -286,12 +292,19 @@ Tile layout
       "Lights",
       1,
       EX_SCROLL,
-      {{SFN_Lights, SFL_REVERSE, 270, 90},{SFN_None}},
+#if defined(ROUND_DISPLAY)
+      {{BTF_Lights, SFL_REVERSE, 270, 90},{BTF_None}},
+#else
+      {{BTF_None},{BTF_None}},
+#endif
       0,
       0,
       NULL,
       {
-        { 1, 0, 0, BTF_Lights, "LivingRoom", {0}, 110, 28, {0}},
+#if !defined(ROUND_DISPLAY)
+        {1, 0, BF_SLIDER_V|BF_FIXED_POS, BTF_Lights, "",  {0}, 14, DISPLAY_HEIGHT - 80, {0}, 10, 40},
+#endif
+        { 2, 0, 0, BTF_Lights, "LivingRoom", {0}, 110, 28, {0}},
       }
     },
     //
@@ -299,7 +312,7 @@ Tile layout
       "Thermostat",
       2, // row 2
       EX_NONE,
-      {{SFN_None},{SFN_None}},
+      {{BTF_None},{BTF_None}},
       0,
       0,
       NULL,
@@ -321,7 +334,7 @@ Tile layout
       "Garage Door",
       2, // row 2
       EX_NONE,
-      {{SFN_None},{SFN_None}},
+      {{BTF_None},{BTF_None}},
       0,
       0,
       NULL,
@@ -336,7 +349,11 @@ Tile layout
       "Settings",
       3, // row 3
       EX_NONE,
-      {{SFN_Brightness, SFL_REVERSE, 270, 90},{SFN_None}},
+#if defined(ROUND_DISPLAY)
+      {{BTF_Brightness, SFL_REVERSE, 270, 90},{BTF_None}},
+#else
+      {{BTF_None},{BTF_None}},
+#endif
       0,
       0,
       NULL,
@@ -345,6 +362,9 @@ Tile layout
         {2, 1, 0, BTF_BT_ONOFF, "Bluetooth On", {0},  112, 28, {0}},
         {2, 2, 0, BTF_Restart, "Restart", {0},  112, 28, {0}},
         {3, 2, BF_FIXED_POS, BTF_RSSI, "", {0}, 26, 26, {0}, (DISPLAY_WIDTH/2 - 26/2), 180 + 26},
+#if !defined(ROUND_DISPLAY)
+        {4, 3, BF_SLIDER_V|BF_FIXED_POS, BTF_Brightness, "",  {0}, 14, DISPLAY_HEIGHT - 80, {0}, 10, 40},
+#endif
       }
     },
     // Notification tile (very last)
@@ -352,12 +372,12 @@ Tile layout
       "Notifications",
       4,
       EX_NOTIF | EX_SCROLL,
-      {{SFN_None},{SFN_None}},
+      {{BTF_None},{BTF_None}},
       0,
       0,
       NULL,
       {
-        {1, 0, BF_FIXED_POS, BTF_Clear, "Clear", {0}, 180, 24, {0}, 0, 240-24}, // force y
+        {1, 0, BF_FIXED_POS, BTF_Clear, "Clear", {0}, 180, 24, {0}, 0, DISPLAY_HEIGHT-24}, // force y
       }
     },
   };
@@ -374,7 +394,7 @@ Tile layout
   uint16_t m_sleepTimer;
   int16_t  m_swipePos;
   bool     m_bSwipeReady;
-  uint8_t  m_nLastTile;
+  uint8_t  m_nNextTile;
   uint8_t  m_nCurrRow;
   uint8_t  m_nLastRow;
 
