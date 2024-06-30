@@ -193,7 +193,7 @@ void Display::service(void)
         drawButton(m_tile[m_nCurrTile], m_pCurrBtn, false, 0, 0); // draw released button
         sprite.pushSprite(0, 0);
 
-        if(m_pCurrBtn && (m_pCurrBtn->flags & (BF_SLIDER_H|BF_SLIDER_V)) ) // todo: check this
+        if(m_pCurrBtn && (m_pCurrBtn->flags & (BF_SLIDER_H|BF_SLIDER_V)) )
         {
           buttonCmd(m_pCurrBtn, true);
         }
@@ -641,7 +641,6 @@ void Display::oneSec()
           if(ee.lights[i - 1].szName[0] == 0)
             break;
           pTile.button[i].pszText = ee.lights[i - 1].szName;
-          pTile.button[i].ID = i + 1;
           pTile.button[i].row = i;
           pTile.button[i].w = 110;
           pTile.button[i].h = 28;
@@ -733,7 +732,7 @@ void Display::formatButtons(Tile& pTile)
   sprite.setFreeFont(&FreeSans9pt7b);
 
   uint8_t btnCnt;
-  for( btnCnt = 0; btnCnt < BUTTON_CNT && pTile.button[btnCnt].ID; btnCnt++) // count buttons
+  for( btnCnt = 0; btnCnt < BUTTON_CNT && pTile.button[btnCnt].row != 0xFF; btnCnt++) // count buttons
     if( pTile.button[btnCnt].w == 0 && pTile.button[btnCnt].pszText && pTile.button[btnCnt].pszText[0] ) // if no width
       pTile.button[btnCnt].w = sprite.textWidth(pTile.button[btnCnt].pszText) + (BORDER_SPACE*2);   // calc width based on text width
 
@@ -822,7 +821,7 @@ void Display::drawTile(int8_t nTile, bool bFirst, int16_t x, int16_t y)
   sprite.setFreeFont(&FreeSans9pt7b);
 
   uint8_t btnCnt;
-  for( btnCnt = 0; btnCnt < BUTTON_CNT && pTile.button[btnCnt].ID; btnCnt++); // count buttons
+  for( btnCnt = 0; btnCnt < BUTTON_CNT && pTile.button[btnCnt].row != 0xFF; btnCnt++); // count buttons
 
   if( btnCnt )
   {
@@ -947,7 +946,7 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed, int16_t x, in
       s = m_bGdoDoor ? "Close":"Open";
       break;
     case BTF_Lights:
-      if(lights.getSwitch(pBtn->ID)) // light is on
+      if(lights.getSwitch(pBtn->row+1)) // light is on
         pBtn->flags |= BF_STATE_2;
       else
         pBtn->flags &= ~BF_STATE_2;
@@ -1030,7 +1029,7 @@ void Display::buttonCmd(Button *pBtn, bool bRepeat)
 
     case BTF_Lights:
       if(ee.bWiFiEnabled)
-        if(!lights.setSwitch( pBtn->ID, !lights.getSwitch(pBtn->ID), 0 ) )
+        if(!lights.setSwitch( pBtn->row+1, !lights.getSwitch(pBtn->row+1), 0 ) )
           notify("Light command failed");
       break;
 
