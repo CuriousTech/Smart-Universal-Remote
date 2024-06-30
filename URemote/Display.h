@@ -118,7 +118,6 @@ struct ArcSlider
 
 struct Button
 {
-  uint8_t ID;             // Don't set to 0
   uint8_t row;            // Used with w to calculate x positions
   uint16_t flags;          // see BF_ flags
   uint8_t nFunction;     // see enum Button_Function
@@ -210,11 +209,12 @@ Tile layout
       0,
       0,//watchFace,
       {
-        { 1, 0, BF_FIXED_POS, BTF_RSSI, "", {0},  26, 26, {0}, (DISPLAY_WIDTH/2 - 26/2), 180 + 26},
-        { 2, 0, BF_FIXED_POS|BF_TEXT, BTF_Time, "12:00:00 AM", {0}, 120, 32, {0}, DISPLAY_WIDTH/2-56, 50},
-        { 3, 0, BF_FIXED_POS|BF_TEXT, BTF_Date,  "Jan 01", {0}, 80, 32, {0}, DISPLAY_WIDTH/2-40, 152},
-        { 4, 0, BF_FIXED_POS|BF_TEXT, BTF_DOW,   "Sun",  {0},  40, 32, {0}, 170, DISPLAY_HEIGHT/2 - 15},
-        { 5, 0, BF_FIXED_POS|BF_TEXT, BTF_Volts, "4.20",  {0},  50, 32, {0}, 28, DISPLAY_HEIGHT/2 - 15},
+        { 0, BF_FIXED_POS, BTF_RSSI, "", {0},  26, 26, {0}, (DISPLAY_WIDTH/2 - 26/2), 180 + 26},
+        { 0, BF_FIXED_POS|BF_TEXT, BTF_Time, "12:00:00 AM", {0}, 120, 32, {0}, DISPLAY_WIDTH/2-56, 50},
+        { 0, BF_FIXED_POS|BF_TEXT, BTF_Date,  "Jan 01", {0}, 80, 32, {0}, DISPLAY_WIDTH/2-40, 152},
+        { 0, BF_FIXED_POS|BF_TEXT, BTF_DOW,   "Sun",  {0},  40, 32, {0}, 170, DISPLAY_HEIGHT/2 - 15},
+        { 0, BF_FIXED_POS|BF_TEXT, BTF_Volts, "4.20",  {0},  50, 32, {0}, 28, DISPLAY_HEIGHT/2 - 15},
+        {0xFF}
       }
     },
     // tile 1 (left-most horizontal tile)
@@ -226,12 +226,13 @@ Tile layout
       0,
       0,
       NULL,
-      {//ID, r, F, fn,        text,   icons, w, h, {addr, code}, x, y
-        { 1, 0, 0, BTF_IR,    "TV",     {0}, 48, 30, {SAMSUNG, 0x7,0xE6, 3}},
-        { 2, 0, 0, BTF_IR,    "AMP",    {0}, 48, 30, {0, 0, 0x34}},
-        { 3, 0, 0, BTF_IR,     "DVD",    {0}, 48, 30, {0, 0, 0x34}},
-        { 1, 1, 0, BTF_Lights, "Light",  {0}, 48, 30, {0}}, // LivingRoom ID = 1
-        { 2, 1, 0, BTF_Lights, "Switch", {0}, 48, 30, {0}}, // Other switch ID = 2
+      {// r, F, fn,        text,   icons, w, h, {addr, code}, x, y
+        { 0, 0, BTF_IR,    "TV",     {0}, 48, 30, {SAMSUNG, 0x7,0xE6, 3}},
+        { 0, 0, BTF_IR,    "AMP",    {0}, 48, 30, {0, 0, 0x34}},
+        { 0, 0, BTF_IR,     "DVD",    {0}, 48, 30, {0, 0, 0x34}},
+        { 1, 0, BTF_Lights, "Light",  {0}, 48, 30, {0}}, // LivingRoom ID = 1
+        { 1, 0, BTF_Lights, "Switch", {0}, 48, 30, {0}}, // Other switch ID = 2
+        {0xFF}
       },
     },
     // tile 2
@@ -244,22 +245,23 @@ Tile layout
       0,
       NULL,
       {
-        { 1, 0, 0, BTF_IR, "1", {0}, 48, 32,  {SAMSUNG,0x7,4, 3}},
-        { 2, 0, 0, BTF_IR, "2", {0}, 48, 32,  {SAMSUNG,0x7,5,3}},
-        { 3, 0, 0, BTF_IR, "3", {0}, 48, 32,  {SAMSUNG,0x7,6,3}},
-        {13, 0, BF_REPEAT, BTF_IR, NULL, {i_up, 0}, 32, 32, {SAMSUNG, 0x7,7, 3}},
-        { 4, 1, 0, BTF_IR,"4", {0}, 48, 32, {SAMSUNG,0x7,8,3}},
-        { 5, 1, 0, BTF_IR,"5", {0}, 48, 32, {SAMSUNG,0x7,9,3}},
-        { 6, 1, 0, BTF_IR,"6", {0}, 48, 32, {SAMSUNG,0x7,10,3}},
-        {14, 1, BF_REPEAT,BTF_IR,  NULL, {i_dn, 0}, 32, 32, {SAMSUNG, 0x7,0xE6,3}},
-        { 7, 2, 0, BTF_IR,"7", {0}, 48, 32, {SAMSUNG,0x7,11,3}},
-        { 8, 2, 0, BTF_IR,"8", {0}, 48, 32, {SAMSUNG,0x7,12,3}},
-        { 9, 2, 0, BTF_IR,"9", {0}, 48, 32, {SAMSUNG,0x7,13,3}},
-        {15, 2, BF_REPEAT, BTF_IR, NULL, {i_up, 0}, 32, 32, {SAMSUNG, 0x7,0x61,3}},
-        {11, 3, 0, BTF_IR,"H", {0}, 48, 32, {SAMSUNG,0x7,0x79,3}},
-        {10, 3, 0, BTF_IR,"0", {0}, 48, 32, {SAMSUNG,0x7,0x11,3}},
-        {12, 3, 0, BTF_IR,"<", {0}, 48, 32, {SAMSUNG,0x7,0x13,3}},
-        {16, 3, BF_REPEAT, BTF_IR, NULL, {i_dn, 0}, 32, 32, {SAMSUNG, 0x7,11,3}},
+        { 0, 0, BTF_IR, "1", {0}, 48, 32,  {SAMSUNG,0x7,4, 3}},
+        { 0, 0, BTF_IR, "2", {0}, 48, 32,  {SAMSUNG,0x7,5,3}},
+        { 0, 0, BTF_IR, "3", {0}, 48, 32,  {SAMSUNG,0x7,6,3}},
+        { 0, BF_REPEAT, BTF_IR, NULL, {i_up, 0}, 32, 32, {SAMSUNG, 0x7,7, 3}},
+        { 1, 0, BTF_IR,"4", {0}, 48, 32, {SAMSUNG,0x7,8,3}},
+        { 1, 0, BTF_IR,"5", {0}, 48, 32, {SAMSUNG,0x7,9,3}},
+        { 1, 0, BTF_IR,"6", {0}, 48, 32, {SAMSUNG,0x7,10,3}},
+        { 1, BF_REPEAT,BTF_IR,  NULL, {i_dn, 0}, 32, 32, {SAMSUNG, 0x7,0xE6,3}},
+        { 2, 0, BTF_IR,"7", {0}, 48, 32, {SAMSUNG,0x7,11,3}},
+        { 2, 0, BTF_IR,"8", {0}, 48, 32, {SAMSUNG,0x7,12,3}},
+        { 2, 0, BTF_IR,"9", {0}, 48, 32, {SAMSUNG,0x7,13,3}},
+        { 2, BF_REPEAT, BTF_IR, NULL, {i_up, 0}, 32, 32, {SAMSUNG, 0x7,0x61,3}},
+        { 3, 0, BTF_IR,"H", {0}, 48, 32, {SAMSUNG,0x7,0x79,3}},
+        { 3, 0, BTF_IR,"0", {0}, 48, 32, {SAMSUNG,0x7,0x11,3}},
+        { 3, 0, BTF_IR,"<", {0}, 48, 32, {SAMSUNG,0x7,0x13,3}},
+        { 3, BF_REPEAT, BTF_IR, NULL, {i_dn, 0}, 32, 32, {SAMSUNG, 0x7,11,3}},
+        {0xFF}
       }
     },
     //
@@ -276,15 +278,16 @@ Tile layout
       0,
       NULL,
       {
-        {1, 0, BF_REPEAT, BTF_PC_Media, NULL,  {i_lt, 0}, 32, 32, {3,0}},
-        {2, 0, 0, BTF_PC_Media,       "Play",  {0}, 60, 32, {0,0}},
-        {3, 0, BF_REPEAT, BTF_PC_Media, NULL,  {i_rt, 0}, 32, 32, {2,0}},
-        {4, 1, 0, BTF_PC_Media,        "STOP", {0}, 60, 32, {1,0}},
-        {5, 2, BF_SLIDER_H, BTF_PC_Media, "",  {0}, 120, 32, {1001,0}},
-        {6, 3, 0, BTF_PC_Media,        "Mute", {0}, 60, 32, {4,0}},
+        { 0, BF_REPEAT, BTF_PC_Media, NULL,  {i_lt, 0}, 32, 32, {3,0}},
+        { 0, 0, BTF_PC_Media,       "Play",  {0}, 60, 32, {0,0}},
+        { 0, BF_REPEAT, BTF_PC_Media, NULL,  {i_rt, 0}, 32, 32, {2,0}},
+        { 1, 0, BTF_PC_Media,        "STOP", {0}, 60, 32, {1,0}},
+        { 2, BF_SLIDER_H, BTF_PC_Media, "",  {0}, 120, 32, {1001,0}},
+        { 3, 0, BTF_PC_Media,        "Mute", {0}, 60, 32, {4,0}},
 #if !defined(ROUND_DISPLAY)
-        {7, 4, BF_SLIDER_V|BF_FIXED_POS, BTF_PCVolume, "",  {0}, 14, DISPLAY_HEIGHT - 80, {0}, DISPLAY_WIDTH-20, 40},
+        { 4, BF_SLIDER_V|BF_FIXED_POS, BTF_PCVolume, "",  {0}, 14, DISPLAY_HEIGHT - 80, {0}, DISPLAY_WIDTH-20, 40},
 #endif
+        {0xFF}
       }
     },
     //
@@ -302,9 +305,10 @@ Tile layout
       NULL,
       {
 #if !defined(ROUND_DISPLAY)
-        {1, 0, BF_SLIDER_V|BF_FIXED_POS, BTF_Lights, "",  {0}, 14, DISPLAY_HEIGHT - 80, {0}, 10, 40},
+        { 0, BF_SLIDER_V|BF_FIXED_POS, BTF_Lights, "",  {0}, 14, DISPLAY_HEIGHT - 80, {0}, 10, 40},
 #endif
-        { 2, 0, 0, BTF_Lights, "LivingRoom", {0}, 110, 28, {0}},
+        { 0, 0, BTF_Lights, "LivingRoom", {0}, 110, 28, {0}},
+        {0xFF}
       }
     },
     //
@@ -317,16 +321,17 @@ Tile layout
       0,
       NULL,
       {
-        {1, 0, BF_TEXT, 0, "Out:",  {0}, 0, 32, {0}},
-        {2, 0, BF_BORDER|BF_TEXT, BTF_Stat_OutTemp, "",  {0}, 60, 32, {1,0}},
-        {3, 0, BF_TEXT, 0, "",  {0}, 32, 32, {0}}, // spacer
-        {4, 1, BF_TEXT, 0, " In:",  {0}, 38, 32, {1,0}},
-        {5, 1, BF_BORDER|BF_TEXT, BTF_Stat_Temp, "",  {0}, 60, 32, {1,0}},
-        {6, 1, BF_REPEAT, BTF_StatCmd, NULL, {i_up, 0}, 32, 32, {0}},
-        {7, 2, BF_TEXT, 0, "Set:",  {0}, 0, 32, {1,0}},
-        {8, 2, BF_BORDER|BF_TEXT, BTF_Stat_SetTemp, "",  {0}, 60, 32, {1,0}},
-        {9, 2, BF_REPEAT, BTF_StatCmd, NULL, {i_dn, 0}, 32, 32, {1}},
-        {10, 3, 0, BTF_Stat_Fan, "Fan", {0, 0}, 0, 32, {2}},
+        { 0, BF_TEXT, 0, "Out:",  {0}, 0, 32, {0}},
+        { 0, BF_BORDER|BF_TEXT, BTF_Stat_OutTemp, "",  {0}, 60, 32, {1,0}},
+        { 0, BF_TEXT, 0, "",  {0}, 32, 32, {0}}, // spacer
+        { 1, BF_TEXT, 0, " In:",  {0}, 38, 32, {1,0}},
+        { 1, BF_BORDER|BF_TEXT, BTF_Stat_Temp, "",  {0}, 60, 32, {1,0}},
+        { 1, BF_REPEAT, BTF_StatCmd, NULL, {i_up, 0}, 32, 32, {0}},
+        { 2, BF_TEXT, 0, "Set:",  {0}, 0, 32, {1,0}},
+        { 2, BF_BORDER|BF_TEXT, BTF_Stat_SetTemp, "",  {0}, 60, 32, {1,0}},
+        { 2, BF_REPEAT, BTF_StatCmd, NULL, {i_dn, 0}, 32, 32, {1}},
+        { 3, 0, BTF_Stat_Fan, "Fan", {0, 0}, 0, 32, {2}},
+        {0xFF}
       }
     },
     //
@@ -339,9 +344,10 @@ Tile layout
       0,
       NULL,
       {
-        {1, 0, BF_BORDER|BF_TEXT, BTF_GdoDoor, "",  {0}, 98, 32, {1,0}},
-        {2, 1, BF_BORDER|BF_TEXT, BTF_GdoCar, "",  {0}, 98, 32, {1,0}},
-        {3, 2, 0, BTF_GdoCmd, "Open", {0, 0}, 98, 32, {0}},
+        { 0, BF_BORDER|BF_TEXT, BTF_GdoDoor, "",  {0}, 98, 32, {1,0}},
+        { 1, BF_BORDER|BF_TEXT, BTF_GdoCar, "",  {0}, 98, 32, {1,0}},
+        { 2, 0, BTF_GdoCmd, "Open", {0, 0}, 98, 32, {0}},
+        {0xFF}
       }
     },
     // Pull-up tile (last)
@@ -358,13 +364,14 @@ Tile layout
       0,
       NULL,
       {
-        {1, 0, 0, BTF_WIFI_ONOFF, "WiFi On",      {0},  112, 28,  {0}},
-        {2, 1, 0, BTF_BT_ONOFF, "Bluetooth On", {0},  112, 28, {0}},
-        {2, 2, 0, BTF_Restart, "Restart", {0},  112, 28, {0}},
-        {3, 2, BF_FIXED_POS, BTF_RSSI, "", {0}, 26, 26, {0}, (DISPLAY_WIDTH/2 - 26/2), 180 + 26},
+        { 0, 0, BTF_WIFI_ONOFF, "WiFi On",      {0},  112, 28,  {0}},
+        { 1, 0, BTF_BT_ONOFF, "Bluetooth On", {0},  112, 28, {0}},
+        { 2, 0, BTF_Restart, "Restart", {0},  112, 28, {0}},
+        { 2, BF_FIXED_POS, BTF_RSSI, "", {0}, 26, 26, {0}, (DISPLAY_WIDTH/2 - 26/2), 180 + 26},
 #if !defined(ROUND_DISPLAY)
-        {4, 3, BF_SLIDER_V|BF_FIXED_POS, BTF_Brightness, "",  {0}, 14, DISPLAY_HEIGHT - 80, {0}, 10, 40},
+        { 3, BF_SLIDER_V|BF_FIXED_POS, BTF_Brightness, "",  {0}, 14, DISPLAY_HEIGHT - 80, {0}, 10, 40},
 #endif
+        {0xFF}
       }
     },
     // Notification tile (very last)
@@ -377,7 +384,8 @@ Tile layout
       0,
       NULL,
       {
-        {1, 0, BF_FIXED_POS, BTF_Clear, "Clear", {0}, 180, 24, {0}, 0, DISPLAY_HEIGHT-24}, // force y
+        { 0, BF_FIXED_POS, BTF_Clear, "Clear", {0}, 180, 24, {0}, 0, DISPLAY_HEIGHT-24}, // force y
+        {0xFF}
       }
     },
   };
