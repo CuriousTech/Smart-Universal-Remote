@@ -34,9 +34,10 @@ SOFTWARE.
 #define SERVER_ENABLE // uncomment to enable server and WebSocket
 //#define BLE_ENABLE // uncomment for BLE keyboard (uses 510KB (16%) PROGMEN and >100K heap)
 #define CLIENT_ENABLE // uncomment for PC client WebSocket
+#define IR_ENABLE // uncomment for IR
 
 #include <WiFi.h>
-#include <TimeLib.h> // http://www.pjrc.com/teensy/td_libs_Time.html
+#include <TimeLib.h> // https://github.com/PaulStoffregen/Time
 #include <UdpTime.h> // https://github.com/CuriousTech/ESP07_WiFiGarageDoor/tree/master/libraries/UdpTime
 
 #include <FFat.h>
@@ -75,6 +76,7 @@ void startListener(void);
 
 // GPIO 15-18 reserved for keypad
 
+#ifdef IR_ENABLE
 #if (USER_SETUP_ID==302) // 240x240
  #define IR_RECEIVE_PIN   21
  #define IR_SEND_PIN      33
@@ -101,6 +103,7 @@ void startListener(void);
 #define MARK_EXCESS_MICROS    20    // Adapt it to your IR receiver module. 20 is recommended for the cheap VS1838 modules.
 
 #include <IRremote.hpp> // IRremote from library manager
+#endif
 
 #include "display.h"
 #include "Lights.h" // Uses ~3KB
@@ -116,7 +119,7 @@ bool bRXActive;
 
 Display display;
 eeMem ee;
-UdpTime uTime;
+UdpTime udpTime;
 
 void consolePrint(String s)
 {
@@ -143,6 +146,7 @@ void decodePrint(uint8_t proto, uint16_t addr, uint16_t cmd, uint32_t raw, uint8
 
 void sendIR(uint16_t *pCode)
 {
+#ifdef IR_ENABLE
   display.RingIndicator(0);
   IRData IRSendData;
   IRSendData.protocol = (decode_type_t)pCode[0];
@@ -160,6 +164,7 @@ void sendIR(uint16_t *pCode)
   js.Var("code", pCode[2]);
   js.Var("rep", pCode[3]);
   ws.textAll(js.Close());  
+#endif
 #endif
 }
 
@@ -361,7 +366,7 @@ void jsonCallback(int16_t iName, int iValue, char *psValue)
       sendIR(code);
       break;
     case 4: // RX
-#ifndef DISABLE_CODE_FOR_RECEIVER
+#if defined(IR_ENABLE) && !defined(DISABLE_CODE_FOR_RECEIVER)
       IrReceiver.begin(IR_RECEIVE_PIN);
       consolePrint("Decode started");
       bRXActive = true;
@@ -378,7 +383,7 @@ void jsonCallback(int16_t iName, int iValue, char *psValue)
       display.setSliderValue(BTF_PC_Media, iValue);
       break;
     case 8: // LED
-      digitalWrite(IR_SEND_PIN, iValue ? HIGH:LOW);
+//      digitalWrite(IR_SEND_PIN, iValue ? HIGH:LOW);
       break;
     case 9: // STATTEMP
       display.m_statTemp = iValue;
@@ -500,7 +505,7 @@ void serviceWiFi()
 String dataJson()
 {
   jsonString js("state");
-  js.Var("t", (long)now() - ( (ee.tz + uTime.getDST() ) * 3600) );
+  js.Var("t", (long)now() - ( (ee.tz + udpTime.getDST() ) * 3600) );
   return js.Close();
 }
 
@@ -560,11 +565,9 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
 
 void setup()
 {
-//  ets_printf("\nStarting\n"); // print over USB
-//  ets_printf("Free: %ld\n", heap_caps_get_free_size(MALLOC_CAP_8BIT) );
-
-  pinMode(IR_SEND_PIN, OUTPUT);
-  digitalWrite(IR_SEND_PIN, LOW);
+  delay(1000);
+  ets_printf("\nStarting\n"); // print over USB
+  ets_printf("Free: %ld\n", heap_caps_get_free_size(MALLOC_CAP_8BIT) );
 
   ee.init();
   display.init();
@@ -572,8 +575,12 @@ void setup()
   if(ee.bWiFiEnabled)
     startWiFi();
 
+#ifdef IR_ENABLE
+  pinMode(IR_SEND_PIN, OUTPUT);
+  digitalWrite(IR_SEND_PIN, LOW);
   IrSender.begin(); // Start with IR_SEND_PIN as send pin
   IrSender.enableIROut(SAMSUNG_KHZ); // Call it with 38 kHz just to initialize the values
+#endif
 
   if(ee.bBtEnabled == false)
     btStop();
@@ -591,13 +598,14 @@ void loop()
 
   display.service();  // check for touch, etc.
 
-  if(uTime.check(ee.tz))
-  {
-  }
+  if(WiFi.status() == WL_CONNECTED)
+    if(udpTime.check(ee.tz))
+    {
+    }
 
   serviceWiFi(); // handles OTA
 
-#ifndef DISABLE_CODE_FOR_RECEIVER
+#if defined(IR_ENABLE) && !defined(DISABLE_CODE_FOR_RECEIVER)
   if(bRXActive)
   {
      if (IrReceiver.decode())
@@ -631,8 +639,10 @@ void loop()
   if(sec_save != second()) // only do stuff once per second
   {
     sec_save = second();
+
     if(secondsWiFi()) // once per second stuff, returns true once on connect
-      uTime.start();
+      udpTime.start();
+
     display.oneSec();
 
     if(min_save != minute()) // only do stuff once per minute
@@ -642,8 +652,8 @@ void loop()
       if(hour_save != hour()) // update our IP and time daily (at 2AM for DST)
       {
         hour_save = hour();
-        if(hour_save == 2)
-          uTime.start(); // update time daily at DST change
+        if(hour_save == 2 && WiFi.status() == WL_CONNECTED)
+          udpTime.start(); // update time daily at DST change
 
         ee.update();
       }
