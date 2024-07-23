@@ -21,9 +21,9 @@ Parts list:
 
 [TinkerCAD Case Model](https://www.tinkercad.com/things/j1XckJlfVuT-waveshare-esp32-s3-touch-128-remote-case) For editing the 3D print model.  The 1.69" model is here as well.  
 
-[Old IRIO board on OSHPark](https://oshpark.com/shared_projects/fLeru7yH)  Solder a 4 pin header flat to it.  
+[New IRIO board on OSHPark](https://oshpark.com/shared_projects/KRJOFbjO)  
 
-This IR sender/receiver is designed to be built easily using common parts, but Arduino IR modules should be compatible.  The top-side components are for the IR. If using an NPN transistor for the sender, subtract the vF from 3.3 for R1 plus the IR LED vF. 110 ohms should be good for a MOSFET and 1.2V LED. The bottom side is for battery voltage reading, and is unused for this.  
+This IR sender/receiver is designed to be built easily using common parts, but Arduino IR modules should be compatible.  If using an NPN transistor for the sender, subtract the vF from 3.3 for R1 plus the IR LED vF. 110 ohms should be good for a MOSFET and 1.2V LED.  
 
 The web page. This is used to decode remotes and test output commands. Just hit the decode button and start pushing buttons on a remote. Those values can be entered in the button code[4] array of any buttons created. Mixed remotes on one page, or all the same. Doesn't matter.  
 ![uremoteweb](https://curioustech.net/images/uremoteweb.png)  
