@@ -178,7 +178,8 @@ private:
   void drawNotifs(Tile& pTile, int16_t x, int16_t y);
   void drawClock(int16_t x, int16_t y);
   bool arcSliderHit(ArcSlider& slider, uint8_t& value);
-
+  void drawText(String s, int16_t x, int16_t y, int16_t angle);
+  void drawArcText(String s, int16_t angle, int8_t distance);
   void cspoint(int16_t &x2, int16_t &y2, int16_t x, int16_t y, float angle, float size);
 
   void startSleep(void);
