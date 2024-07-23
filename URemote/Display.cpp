@@ -1007,9 +1007,6 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed, int16_t x, in
     else
       sprite.setTextColor(TFT_CYAN, colorBg);
     sprite.drawString( s, x + pBtn->x + (pBtn->w >> 1), yOffset + (pBtn->h >> 1) - 2 );
-
-    drawArcText("Test string", 100, 60);
-
   }  
 }
 
