@@ -53,6 +53,8 @@ extern void consolePrint(String s); // for browser debug
 
 #endif
 
+const int16_t bgColor = TFT_BLACK;
+
 CST816T touch(I2C_SDA, I2C_SCL, TP_RST, TP_INT);
 QMI8658 qmi;
 
@@ -321,7 +323,7 @@ void Display::service(void)
     ang2 = ang;
     for(uint8_t i = 0; i < 12; i++)
     {
-      tft.drawArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 120, 117, ang2, ang2 + 5, (WiFi.status() == WL_CONNECTED) ? tft.color565(rgb[0], rgb[1], rgb[2]):TFT_RED, TFT_BLACK, false);
+      tft.drawArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 120, 117, ang2, ang2 + 5, (WiFi.status() == WL_CONNECTED) ? tft.color565(rgb[0], rgb[1], rgb[2]):TFT_RED, bgColor, false);
       ang2 += 30;
       ang2 %= 360;
     }
@@ -342,7 +344,7 @@ void Display::service(void)
         rgb[0] ++;
       else
         rgb[2] ++;
-      tft.drawSmoothRoundRect(0, 0, 43, 44, DISPLAY_WIDTH-1, DISPLAY_HEIGHT-1, tft.color565(rgb[0], rgb[1], rgb[2]), TFT_BLACK );
+      tft.drawSmoothRoundRect(0, 0, 43, 44, DISPLAY_WIDTH-1, DISPLAY_HEIGHT-1, tft.color565(rgb[0], rgb[1], rgb[2]), bgColor);
     }
 
 #endif
@@ -810,9 +812,9 @@ void Display::drawTile(int8_t nTile, bool bFirst, int16_t x, int16_t y)
   if(pTile.pBGImage)
     sprite.pushImage(x, y, DISPLAY_WIDTH, DISPLAY_HEIGHT, pTile.pBGImage);
   else if(x == 0 && y == 0)
-    sprite.fillSprite(TFT_BLACK);
+    sprite.fillSprite(bgColor);
   else
-    sprite.fillRect(x, y, DISPLAY_WIDTH, DISPLAY_HEIGHT, TFT_BLACK);
+    sprite.fillRect(x, y, DISPLAY_WIDTH, DISPLAY_HEIGHT, bgColor);
 
   if(pTile.Extras & EX_NOTIF)
     drawNotifs(pTile, x, y);
@@ -834,8 +836,8 @@ void Display::drawTile(int8_t nTile, bool bFirst, int16_t x, int16_t y)
 
   if(pTile.pszTitle && pTile.pszTitle[0])
   {
-    sprite.fillRect(x, y, DISPLAY_WIDTH, 40, TFT_BLACK); // cover any scrolled buttons/text
-    sprite.setTextColor(rgb16(16,63,0), TFT_BLACK );
+    sprite.fillRect(x, y, DISPLAY_WIDTH, 40, bgColor); // cover any scrolled buttons/text
+    sprite.setTextColor(rgb16(16,63,0), bgColor );
     sprite.drawString(pTile.pszTitle, x + DISPLAY_WIDTH/2, y + 27);
   }
 
@@ -979,16 +981,16 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed, int16_t x, in
   {
     const uint8_t sz = 10;
 
-    sprite.drawSpot(x + pBtn->x + sz + pBtn->data[2] * (pBtn->w - sz*2) / 100, yOffset + 15, sz+1, TFT_BLACK); // erase
-    sprite.drawWideLine(x + pBtn->x, yOffset + (pBtn->h>>1), x + pBtn->x + pBtn->w, yOffset + (pBtn->h>>1), 5, TFT_BLUE, TFT_BLACK);
+    sprite.drawSpot(x + pBtn->x + sz + pBtn->data[2] * (pBtn->w - sz*2) / 100, yOffset + 15, sz+1, bgColor); // erase
+    sprite.drawWideLine(x + pBtn->x, yOffset + (pBtn->h>>1), x + pBtn->x + pBtn->w, yOffset + (pBtn->h>>1), 5, TFT_BLUE, bgColor);
     sprite.drawSpot(x + pBtn->x + sz + pBtn->data[1] * (pBtn->w - sz*2) / 100, yOffset + 15, sz, TFT_YELLOW);
   }
   else if(pBtn->flags & BF_SLIDER_V)
   {
     const uint8_t sz = 10;
 
-    sprite.drawSpot(x + pBtn->x - (pBtn->w>>1), yOffset + sz + (100 - pBtn->data[2]) * (pBtn->h - sz*2) / 100, sz+1, TFT_BLACK);
-    sprite.drawWideLine(x + pBtn->x + (pBtn->w>>1), yOffset, x + pBtn->x + (pBtn->w>>1), yOffset + pBtn->h, 5, TFT_BLUE, TFT_BLACK);
+    sprite.drawSpot(x + pBtn->x - (pBtn->w>>1), yOffset + sz + (100 - pBtn->data[2]) * (pBtn->h - sz*2) / 100, sz+1, bgColor);
+    sprite.drawWideLine(x + pBtn->x + (pBtn->w>>1), yOffset, x + pBtn->x + (pBtn->w>>1), yOffset + pBtn->h, 5, TFT_BLUE, bgColor);
     sprite.drawSpot(x + pBtn->x + (pBtn->w>>1), yOffset + sz + (100 - pBtn->data[1]) * (pBtn->h - sz*2) / 100, sz, TFT_YELLOW);
   }
   else if(pBtn->pIcon[nState]) // draw an image if given
@@ -1001,10 +1003,13 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed, int16_t x, in
   if(s.length())
   {
     if(pBtn->flags & BF_TEXT) // text only
-      sprite.setTextColor(TFT_WHITE, TFT_BLACK);
+      sprite.setTextColor(TFT_WHITE, bgColor);
     else
       sprite.setTextColor(TFT_CYAN, colorBg);
     sprite.drawString( s, x + pBtn->x + (pBtn->w >> 1), yOffset + (pBtn->h >> 1) - 2 );
+
+    drawArcText("Test string", 100, 60);
+
   }  
 }
 
@@ -1149,7 +1154,7 @@ void Display::notify(char *pszNote)
 void Display::drawNotifs(Tile& pTile, int16_t x, int16_t y)
 {
   sprite.setTextDatum(TL_DATUM);
-  sprite.setTextColor(TFT_WHITE, TFT_BLACK );
+  sprite.setTextColor(TFT_WHITE, bgColor );
   sprite.setFreeFont(&FreeSans9pt7b);
 
   x += 40; // left padding
@@ -1208,7 +1213,7 @@ void Display::drawArcSlider(ArcSlider& slider, uint8_t newValue, int16_t x, int1
     if(angle < 180) angle += 360;
     if(angle > 360) angle -= 360;
     cspoint(ax, ay, DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, angle, dist);
-    sprite.drawSpot(x + ax, y + ay, 11, TFT_BLACK); // remove old spot
+    sprite.drawSpot(x + ax, y + ay, 11, bgColor); // remove old spot
   }
 
   // draw slider
@@ -1219,11 +1224,11 @@ void Display::drawArcSlider(ArcSlider& slider, uint8_t newValue, int16_t x, int1
 
   if(nEnd > 360) // draw 2 parts if it spans past 360deg
   {
-    sprite.drawSmoothArc(x+DISPLAY_WIDTH/2, x+DISPLAY_HEIGHT/2, dist+4, dist-1, nStart, 359.9, TFT_DARKCYAN, TFT_BLACK, true);
+    sprite.drawSmoothArc(x+DISPLAY_WIDTH/2, x+DISPLAY_HEIGHT/2, dist+4, dist-1, nStart, 359.9, TFT_DARKCYAN, bgColor, true);
     nStart = 0;
     nEnd -= 360;
   }
-  sprite.drawSmoothArc(x+DISPLAY_WIDTH/2,y+DISPLAY_HEIGHT/2, dist+4, dist-1, nStart, nEnd, TFT_DARKCYAN, TFT_BLACK, true);
+  sprite.drawSmoothArc(x+DISPLAY_WIDTH/2,y+DISPLAY_HEIGHT/2, dist+4, dist-1, nStart, nEnd, TFT_DARKCYAN, bgColor, true);
 
   // draw new spot
   angle = slider.nPos;
@@ -1289,7 +1294,7 @@ void Display::btnRSSI(Button *pBtn, int16_t x, int16_t y)
 
   for (uint8_t i = 1; i < 6; i++)
   {
-    sprite.fillRect( x + pBtn->x + i*dist, y + pBtn->y - i*dist, dist-2, i*dist, (sigStrength > i * sect) ? TFT_CYAN : TFT_BLACK );
+    sprite.fillRect( x + pBtn->x + i*dist, y + pBtn->y - i*dist, dist-2, i*dist, (sigStrength > i * sect) ? TFT_CYAN : bgColor );
   }
 }
 
@@ -1300,14 +1305,14 @@ void Display::drawClock(int16_t x, int16_t y)
   const float fy = DISPLAY_HEIGHT/2 + y;
 
   if(ee.bWiFiEnabled && (year() < 2024 || WiFi.status() != WL_CONNECTED)); // Still connecting
-  else sprite.drawSmoothCircle(fx, fy, fx-1, m_bCharging ? TFT_BLUE : TFT_WHITE, TFT_BLACK); // draw outer ring
+  else sprite.drawSmoothCircle(fx, fy, fx-1, m_bCharging ? TFT_BLUE : TFT_WHITE, bgColor); // draw outer ring
 
   for(int16_t i = 0; i < 360; i += 6) // drawing the watchface instead of an image saves 9% of PROGMEM
   {
     int16_t xH,yH,xH2,yH2;
     cspoint(xH, yH, fx, fy, i, 116); // outer edge
     cspoint(xH2, yH2, fx, fy, i, (i%30) ? 105:96); // 60 ticks/12 longer ticks
-    sprite.drawWideLine(xH, yH, xH2, yH2, (i%30) ? 2:3, TFT_SILVER, TFT_BLACK); // 12 wider ticks
+    sprite.drawWideLine(xH, yH, xH2, yH2, (i%30) ? 2:3, TFT_SILVER, bgColor); // 12 wider ticks
   }
 
   if(year() < 2024)
@@ -1321,10 +1326,10 @@ void Display::drawClock(int16_t x, int16_t y)
   cspoint(xS, yS, fx, fy, second() * 6, 96);
   cspoint(xS2, yS2, fx, fy, (second()+30) * 6, 24);
 
-  sprite.drawWedgeLine(fx, fy, xH, yH, 8, 2, TFT_LIGHTGREY, TFT_BLACK); // hour hand
-  sprite.drawWedgeLine(fx, fy, xM, yM, 5, 2, TFT_LIGHTGREY, TFT_BLACK); // minute hand
+  sprite.drawWedgeLine(fx, fy, xH, yH, 8, 2, TFT_LIGHTGREY, bgColor); // hour hand
+  sprite.drawWedgeLine(fx, fy, xM, yM, 5, 2, TFT_LIGHTGREY, bgColor); // minute hand
   sprite.fillCircle(fx, fy, 8, TFT_LIGHTGREY ); // center cap
-  sprite.drawWideLine(xS2, yS2, xS, yS, 2.5, TFT_RED, TFT_BLACK ); // second hand
+  sprite.drawWideLine(xS2, yS2, xS, yS, 2.5, TFT_RED, bgColor ); // second hand
 }
 
 // calc point for a clock hand and slider
@@ -1355,20 +1360,67 @@ void Display::setSliderValue(uint8_t st, int8_t iValue)
   }
 }
 
-/*
-void Display::setButtonValue(uint16_t flags, uint8_t fn, uint8_t iValue)
+void Display::drawText(String s, int16_t x, int16_t y, int16_t angle)
 {
-  for(uint8_t i = 0; i < m_nTileCnt; i++)
-  {
-    Button *pBtn = &m_tile[i].button[0];
-    for(uint8_t j = 0; pBtn[j].x; j++)
-    {
-      if(pBtn[j].flags == flags && pBtn[j].nFunction == fn) // find a button with the matching flags and function
-        pBtn[j].data[1] = iValue;
-    }
-  }
+  TFT_eSprite textSprite = TFT_eSprite(&tft);
+
+#if (USER_SETUP_ID==302) // 240x240
+  textSprite.setSwapBytes(true);
+#endif
+
+  textSprite.setTextDatum(TL_DATUM);
+  textSprite.setTextColor(TFT_WHITE, bgColor );
+  textSprite.setFreeFont(&FreeSans9pt7b);
+  int16_t w = textSprite.textWidth(s) + 2;
+  int16_t h = textSprite.fontHeight() + 2;
+  textSprite.createSprite(w, h);
+  textSprite.fillSprite( bgColor );
+
+  textSprite.drawString(s, 0, 0);
+  sprite.setPivot(x, y);
+  textSprite.pushRotated(&sprite, angle);
+  sprite.setPivot(0, 0);
 }
-*/
+
+void Display::drawArcText(String s, int16_t angle, int8_t distance)
+{
+  TFT_eSprite textSprite = TFT_eSprite(&tft);
+
+#if (USER_SETUP_ID==302) // 240x240
+  textSprite.setSwapBytes(true);
+#endif
+
+  textSprite.setTextDatum(TL_DATUM);
+  textSprite.setTextColor(TFT_WHITE, bgColor );
+  textSprite.setFreeFont(&FreeSans9pt7b);
+
+  int16_t w = textSprite.textWidth("A") + 3;
+  int16_t h = textSprite.fontHeight() + 3;
+  textSprite.createSprite(w, h);
+
+  uint8_t cnt = s.length();
+  String chStr;
+
+  const float fx = DISPLAY_WIDTH/2;// + x; // center
+  const float fy = DISPLAY_HEIGHT/2;// + y;
+  int16_t x1, y1;
+
+  int16_t inc = w * distance / 90;
+
+  // todo: decrement angle by half string
+  for(uint8_t i = 0; i < cnt; i++)
+  {
+    chStr = s.charAt(i);
+
+    cspoint(x1, y1, fx, fy, angle, distance);
+
+    textSprite.fillSprite( bgColor );
+    textSprite.drawString(chStr, 0, 0);
+    sprite.setPivot(x1, y1);
+    textSprite.pushRotated(&sprite, angle += inc);
+  }
+  sprite.setPivot(0, 0);
+}
 
 // Flash a red indicator for RX, TX, PC around the top 
 void Display::RingIndicator(uint8_t n)
@@ -1388,5 +1440,5 @@ void Display::RingIndicator(uint8_t n)
       break;
   }
 
-  tft.drawSmoothArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 119, 115, ang, ang+8, TFT_RED, TFT_BLACK, true);
+  tft.drawSmoothArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 119, 115, ang, ang+8, TFT_RED, bgColor, true);
 }
