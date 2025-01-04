@@ -3,7 +3,7 @@ Smart Universal Remote using [Waveshare ESP32-S3-Touch-LCD-1.28](https://www.wav
   
 This is a work in progress and not all code is complete. That said, it functionally works.  
   
-![uremote1](https://curioustech.net/images/uremote1.jpg)  
+![uremote](https://curioustech.net/images/uremote.jpg)  
 ![uremote2](https://curioustech.net/images/uremote2.jpg)  
 ![uremote2](https://curioustech.net/images/wave.gif)  
   
@@ -15,13 +15,13 @@ Parts list:
   
 [AliExpress ESP32-S3-Touch-1.69](https://www.aliexpress.us/item/3256806781994387.html?spm=a2g0o.order_list.order_list_main.5.6e661802Im2eg3&gatewayAdapt=glo2usa)  Or this one. It seems they've fixed the original issue, but I'm not buying another one to test it. [Subreddit thread](https://www.reddit.com/r/esp32/comments/1cxmo5r/esp32s3_169inch_touch_display_features_6axis_imu/)  
   
-[eBay:Charger pad](https://www.ebay.com/itm/143351559508?var=442544081497) Select USB-C. These can be bought anywhere.  As shown, place it face down, which flips the connector so the wire/ribbon is on top. The edges of the pad can be bent because the wrapper is a bit oversized.  
+[eBay:Charger pad](https://www.ebay.com/itm/143351559508?var=442544081497) Select USB-C. These can be bought anywhere.  For the latest model, the charger can be centered. The edges of the pad can be bent because the wrapper is a bit oversized. A USB-C cable or magnetic connector will work as well.  
 
 [eBay:battery](https://www.ebay.com/itm/174781170731?var=473957762104) Select 1.25mm plug. This is probably a decent size. Be careful with the polarity. It was correct on mine. They sell a 1500mAh that's just a little thicker, but I may add a keypad that will use the extra space.   
 
 [TinkerCAD Case Model](https://www.tinkercad.com/things/j1XckJlfVuT-waveshare-esp32-s3-touch-128-remote-case) For editing the 3D print model.  The 1.69" model is here as well.  
 
-[New IRIO board on OSHPark](https://oshpark.com/shared_projects/KRJOFbjO)  
+[New IRIO board on OSHPark](https://oshpark.com/shared_projects/KRJOFbjO)  I used some double-sided tape to make sure it doesn't touch the other board.  
 
 This IR sender/receiver is designed to be built easily using common parts, but Arduino IR modules should be compatible.  If using an NPN transistor for the sender, subtract the vF from 3.3 for R1 plus the IR LED vF. 110 ohms should be good for a MOSFET and 1.2V LED.  
 
