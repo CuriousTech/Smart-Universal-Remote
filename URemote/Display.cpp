@@ -30,6 +30,7 @@ extern bool sendGdoCmd( uint16_t *pCode);
 extern void consolePrint(String s); // for browser debug
 
 #if (USER_SETUP_ID==302) // 240x240
+
  #define I2C_SDA   6
  #define I2C_SCL   7
  #define IMU_INT   3 // INT2
@@ -63,6 +64,8 @@ QMI8658 qmi;
 ScreenSavers ss;
 #endif
 
+#define ROTATE_DISPLAY
+
 #define TITLE_HEIGHT 40
 #define BORDER_SPACE 3 // H and V spacing + font size for buttons and space between buttons
 
@@ -71,6 +74,9 @@ void Display::init(void)
   pinMode(TFT_BL, OUTPUT);
 
   tft.init();
+#ifdef ROTATE_DISPLAY
+  tft.setRotation(2);
+#endif
   tft.setTextPadding(8); 
 
 #if (USER_SETUP_ID==302) // 240x240
@@ -171,6 +177,10 @@ void Display::service(void)
 
   if(touch.available() )
   {
+#ifdef ROTATE_DISPLAY
+    touch.x = DISPLAY_WIDTH - touch.x;
+    touch.y = DISPLAY_HEIGHT - touch.y;
+#endif
     if(touch.event == 0) // initial touch
     {
       touchXstart = touch.x;
@@ -382,8 +392,8 @@ void Display::checkButtonHit(int16_t touchXstart, int16_t touchYstart)
     if( !(pBtn->flags & BF_FIXED_POS) ) // adjust for scroll offset
       y -= pTile.nScrollIndex;
 
-    if ( (touch.x >= pBtn[i].x && touch.x <= pBtn[i].x + pBtn[i].w && touch.y >= y && touch.y <= y + pBtn[i].h)
-       && (touchXstart >= pBtn[i].x && touchXstart <= pBtn[i].x + pBtn[i].w && touchYstart >= y && touchYstart <= y + pBtn[i].h) ) // make sure not swiping
+    if ( (touch.x >= pBtn[i].x-1 && touch.x <= pBtn[i].x + pBtn[i].w+1 && touch.y >= y-1 && touch.y <= y + pBtn[i].h+1)
+       && (touchXstart >= pBtn[i].x-1 && touchXstart <= pBtn[i].x + pBtn[i].w+1 && touchYstart >= y-1 && touchYstart <= y + pBtn[i].h+1) ) // make sure not swiping
     {
       m_pCurrBtn = &pBtn[i];
 
@@ -638,9 +648,10 @@ void Display::oneSec()
 
       if(pTile.Extras)
       {
-        for(uint8_t i = 1; i < BUTTON_CNT; i++)
+        uint8_t i;
+        for(i = 1; i < BUTTON_CNT; i++)
         {
-          if(ee.lights[i - 1].szName[0] == 0)
+          if(ee.lights[i - 1].szName[0] == 0) // end of list
             break;
           pTile.button[i].pszText = ee.lights[i - 1].szName;
           pTile.button[i].row = i;
@@ -648,12 +659,13 @@ void Display::oneSec()
           pTile.button[i].h = 28;
           pTile.button[i].nFunction = BTF_Lights;
         }
+        pTile.button[i].row = 0xFF; // end row
       }
       formatButtons(pTile);
     }
   }
 
-  static uint16_t v[4];
+  static uint16_t v[8];
   static uint8_t nV = 0;
   v[nV] = analogRead(BATTV);
 
@@ -662,11 +674,11 @@ void Display::oneSec()
   else if(m_vadc > v[nV] + 50)
     m_bCharging = false;
 
-  if(++nV == 4) nV= 0;
+  if(++nV >= 8) nV= 0;
   m_vadc = 0;
-  for(uint8_t vi = 0; vi < 4; vi++)  // do a small average
+  for(uint8_t vi = 0; vi < 8; vi++)  // do a small average
     m_vadc += v[vi];
-  m_vadc >>= 2;
+  m_vadc >>= 3;
 }
 
 bool Display::snooze(uint32_t ms)
