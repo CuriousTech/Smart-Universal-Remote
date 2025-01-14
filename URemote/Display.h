@@ -8,16 +8,8 @@
 // from 5-6-5 to 16 bit value (max 31, 63, 31)
 #define rgb16(r,g,b) ( ((uint16_t)r << 11) | ((uint16_t)g << 5) | (uint16_t)b )
 
-#define DISPLAY_WIDTH 240
-
-#if (USER_SETUP_ID==302) // 240x240
-#define DISPLAY_HEIGHT 240
-#define VADC_MAX 1550
-#define ROUND_DISPLAY
-#else
-#define DISPLAY_HEIGHT 280
-#define VADC_MAX 1642 // 1623 = full
-#endif
+#define DISPLAY_WIDTH TFT_WIDTH
+#define DISPLAY_HEIGHT TFT_HEIGHT
 
 // todo: quick fix
 #ifndef _IR_PROTOCOL_H
@@ -166,6 +158,7 @@ private:
   void swipeTile(int16_t dX, int16_t dY);
   void drawSwipeTiles(void);
   void snapTile(void);
+  void swipeBump(void);
   void drawTile(int8_t nTile, bool bFirst, int16_t x, int16_t y);
   bool scrollPage(uint8_t nTile, int16_t nDelta);
   void formatButtons(Tile& pTile);
@@ -185,6 +178,7 @@ private:
   void startSleep(void);
   void endSleep(void);
   bool snooze(uint32_t ms);
+  void battRead(void);
 
   void IRAM_ATTR handleISR();
   bool m_intTriggered;
