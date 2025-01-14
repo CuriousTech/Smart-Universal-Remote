@@ -27,8 +27,13 @@ SOFTWARE.
 //  Partition: 16MB (3MB APP/9.9 FATFS)
 // For 1.28"
 //  PSRAM: QSPI PSRAM
+//  In TFT_eSPI/User_Setup_Select.h use #include <User_Setups/Setup302_Waveshare_ESP32S3_GC9A01.h>
 // For 1.69"
 //  PSRAM: QPI PSRAM
+//    In TFT_eSPI/User_Setup_Select.h use #include <User_Setups/Setup203_ST7789.h> (custom, included in repo)
+// For 2.8"
+//  PSRAM: QPI PSRAM
+//  In TFT_eSPI/User_Setup_Select.h use #include <User_Setups/Setup303_Waveshare_ESP32S3_ST7789.h> (custom, included in repo)
 
 #define OTA_ENABLE  //uncomment to enable Arduino IDE Over The Air update code (uses ~4K heap)
 #define SERVER_ENABLE // uncomment to enable server and WebSocket
@@ -78,8 +83,11 @@ void startListener(void);
 
 #ifdef IR_ENABLE
 #if (USER_SETUP_ID==302) // 240x240
- #define IR_RECEIVE_PIN   21
- #define IR_SEND_PIN      33
+ #define IR_RECEIVE_PIN   15
+ #define IR_SEND_PIN      16
+#elif (USER_SETUP_ID==303) // 240x320 2.8"
+ #define IR_RECEIVE_PIN   43 // UART0
+ #define IR_SEND_PIN      44
 #else
  #define IR_RECEIVE_PIN   44 // UART0  or 17,18
  #define IR_SEND_PIN      43
@@ -108,7 +116,7 @@ void startListener(void);
 #include "display.h"
 #include "Lights.h" // Uses ~3KB
 Lights lights;
-const char *hostName = "URemote"; // Device and OTA name
+const char *hostName = "URemoteB"; // Device and OTA name
 
 bool bConfigDone = false; // EspTouch done or creds set
 bool bStarted = false; // first start
@@ -140,7 +148,10 @@ void decodePrint(uint8_t proto, uint16_t addr, uint16_t cmd, uint32_t raw, uint8
   js.Var("raw", raw);
   js.Var("bits", bits);
 //  js.Var("flags", flags);
-  ws.textAll(js.Close());  
+
+  String s = js.Close();
+  ws.textAll(s);
+  ets_printf(s.c_str());
 }
 #endif
 
@@ -580,6 +591,7 @@ void setup()
   digitalWrite(IR_SEND_PIN, LOW);
   IrSender.begin(); // Start with IR_SEND_PIN as send pin
   IrSender.enableIROut(SAMSUNG_KHZ); // Call it with 38 kHz just to initialize the values
+
 #endif
 
   if(ee.bBtEnabled == false)
@@ -619,8 +631,11 @@ void loop()
             if (IrReceiver.decodedIRData.protocol == UNKNOWN)
             {
               consolePrint(F("Received noise or an unknown (or not yet enabled) protocol. Stopped"));
+
+              ets_printf("Received noise or an unknown (or not yet enabled) protocol. Stopped\r\n");
+
               IrReceiver.stop();
-              bRXActive = 0;
+              bRXActive = false;
             }
             else
             {
