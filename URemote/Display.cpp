@@ -40,8 +40,28 @@ extern void consolePrint(String s); // for browser debug
  #define BATTV     1
 
  #define DISPLAY_HEIGHT 240
+ CST816T touch(I2C_SDA, I2C_SCL, TP_RST, TP_INT);
+#endif
 
-#else if (USER_SETUP_ID==203) // 240x280
+#if (USER_SETUP_ID==303) // 240x320 2.8"
+ #define I2C_SDA  11
+ #define I2C_SCL  10
+ #define TP_SDA    1
+ #define TP_SCL    3
+ #define IMU_INT  13 // INT1
+ #define TP_RST    2
+ #define TP_INT    4 // normally high
+ #define TFT_BL    5
+ #define BATTV     8
+ #define PWR_CTRL  7
+ #define PWR_BTN   6
+ 
+ #define DISPLAY_HEIGHT 320
+ #include "CST328.h"
+ CST328 touch(TP_SDA, TP_SCL, TP_RST, TP_INT);
+#endif
+
+#if (USER_SETUP_ID==203) // 240x280
  #define I2C_SDA  11
  #define I2C_SCL  10
  #define IMU_INT  38 // INT1
@@ -51,12 +71,11 @@ extern void consolePrint(String s); // for browser debug
  #define BATTV     1
 
  #define DISPLAY_HEIGHT 280
-
+ CST816T touch(I2C_SDA, I2C_SCL, TP_RST, TP_INT);
 #endif
 
 const int16_t bgColor = TFT_BLACK;
 
-CST816T touch(I2C_SDA, I2C_SCL, TP_RST, TP_INT);
 QMI8658 qmi;
 
 #include "screensavers.h" // comment this line to remove screensavers (saves 3172b PROGMEM, 1072b SRAM)
@@ -64,14 +83,20 @@ QMI8658 qmi;
 ScreenSavers ss;
 #endif
 
-#define ROTATE_DISPLAY
-
+#define ROTATE_DISPLAY // Upside down, puts USB on top
 #define TITLE_HEIGHT 40
 #define BORDER_SPACE 3 // H and V spacing + font size for buttons and space between buttons
 
 void Display::init(void)
 {
   pinMode(TFT_BL, OUTPUT);
+
+  ee.bBtEnabled = false; // BUG
+
+#ifdef PWR_CTRL // Power stay-on thing
+  pinMode(PWR_CTRL, OUTPUT);
+  digitalWrite(PWR_CTRL, HIGH);
+#endif
 
   tft.init();
 #ifdef ROTATE_DISPLAY
@@ -106,13 +131,9 @@ void Display::init(void)
   attachInterrupt(IMU_INT, std::bind(&Display::handleISR, this), RISING);
 
   m_vadc = analogRead(BATTV);
-#if (USER_SETUP_ID == 302)
-  if(m_vadc > 1890) // probably full and charging
-    m_bCharging = true;
-#else
-  if(m_vadc > VADC_MAX - 10) // probably full and charging
-    m_bCharging = true;
-#endif
+  if(ee.vadcMax < m_vadc)
+    ee.vadcMax = m_vadc; // calibration
+
   qmi.setWakeOnMotion(true); // set WOM (sets acc values)
   m_intTriggered = false;
 #ifdef SCREENSAVERS_H
@@ -133,6 +154,7 @@ void Display::exitScreensaver()
     m_intTriggered = false; // causes an interrupt
   }
   m_brightness = ee.brightLevel[1]; // increase brightness for any touch
+  ets_printf("exitSS\n");
 }
 
 void Display::service(void)
@@ -164,6 +186,8 @@ void Display::service(void)
       return;
     m_nDispFreeze = 0;
   }
+
+  battRead();
 
 #ifdef SCREENSAVERS_H
   if(m_brightness == ee.brightLevel[0]) // full dim activates screensaver
@@ -230,6 +254,7 @@ void Display::service(void)
 
       Tile& pTile = m_tile[m_nCurrTile];
 
+#if defined(ROUND_DISPLAY)
       // Handle arc slider
       for(uint8_t j = 0; j <SLIDER_CNT; j++)
       {
@@ -246,7 +271,7 @@ void Display::service(void)
           bSliderHit = true;
         }
       }
-
+#endif
       if(bSliderHit);
       else if(touch.gestureID) // swiping mode
       {
@@ -288,7 +313,7 @@ void Display::service(void)
         {
           if(m_pCurrBtn->flags & BF_SLIDER_H)
           {
-            uint16_t off = touch.x - m_pCurrBtn->x;
+            uint16_t off = constrain(touch.x - m_pCurrBtn->x, 0, m_pCurrBtn->w);
 
             m_pCurrBtn->data[2] = m_pCurrBtn->data[1];
             m_pCurrBtn->data[1] = off * 100 / m_pCurrBtn->w;
@@ -298,12 +323,13 @@ void Display::service(void)
               sprite.pushSprite(0, 0);
             }
           }
-          if(m_pCurrBtn->flags & BF_SLIDER_V)
+          else if(m_pCurrBtn->flags & BF_SLIDER_V)
           {
-            uint16_t off = touch.y - m_pCurrBtn->y;
+            uint16_t off = constrain(touch.y - m_pCurrBtn->y, 0, m_pCurrBtn->h);
 
             m_pCurrBtn->data[2] = m_pCurrBtn->data[1]; // save previous for quick erase
             m_pCurrBtn->data[1] = 100 - (off * 100 / m_pCurrBtn->h);
+
             if(m_pCurrBtn->data[2] != m_pCurrBtn->data[1])
             {
               drawButton(pTile, m_pCurrBtn, true, 0, 0);
@@ -316,6 +342,7 @@ void Display::service(void)
           if(m_pCurrBtn && (m_pCurrBtn->flags & (BF_REPEAT|BF_SLIDER_H|BF_SLIDER_V)) )
           {
             buttonCmd(m_pCurrBtn, true);
+            bSliderHit = true;
           }
           m_lastms = millis();
         }
@@ -344,7 +371,7 @@ void Display::service(void)
       rgb[i] = (uint8_t)constrain(rgb[i], 2, 255);
     }
 
-#else // 240x280
+#else // 240x280, 240x320
     static uint8_t rgb[3] = {0, 0, 0};
     static uint8_t cnt;
     if(++cnt > 2)
@@ -385,11 +412,11 @@ void Display::checkButtonHit(int16_t touchXstart, int16_t touchYstart)
   Tile& pTile = m_tile[m_nCurrTile];
   Button *pBtn = &pTile.button[0];
 
-  for(uint16_t i = 0; pBtn[i].x; i++) // check for press in button bounds without slide
+  for(uint16_t i = 0; pBtn[i].row != 0xFF; i++) // check for press in button bounds, rejects swiping
   {
     int16_t y = pBtn[i].y;
 
-    if( !(pBtn->flags & BF_FIXED_POS) ) // adjust for scroll offset
+    if( !(pBtn[i].flags & BF_FIXED_POS) ) // adjust for scroll offset
       y -= pTile.nScrollIndex;
 
     if ( (touch.x >= pBtn[i].x-1 && touch.x <= pBtn[i].x + pBtn[i].w+1 && touch.y >= y-1 && touch.y <= y + pBtn[i].h+1)
@@ -402,10 +429,10 @@ void Display::checkButtonHit(int16_t touchXstart, int16_t touchYstart)
         uint16_t off = touch.x - m_pCurrBtn->x;
         m_pCurrBtn->data[1] = off * 100 / m_pCurrBtn->w;
       }
-      if(m_pCurrBtn->flags & BF_SLIDER_V)
+      else if(m_pCurrBtn->flags & BF_SLIDER_V)
       {
         uint16_t off = touch.y - m_pCurrBtn->y;
-        m_pCurrBtn->data[1] = off * 100 / m_pCurrBtn->h;
+        m_pCurrBtn->data[1] = 100 - (off * 100 / m_pCurrBtn->h);
       }
       drawButton(pTile, m_pCurrBtn, true, 0, 0); // draw pressed state
       sprite.pushSprite(0, 0);
@@ -421,6 +448,7 @@ void Display::startSleep()
   if(m_bSleeping || m_sleepTimer)
     return;
 
+  ets_printf("start sleep\n");
   m_bSleeping = true;
   m_brightness = ee.brightLevel[0] + 1; // no screensaver
   analogWrite(TFT_BL, m_bright = 0);
@@ -438,6 +466,7 @@ void Display::endSleep()
   m_sleepTimer = 0;
   m_bSleeping = false;
 
+ets_printf("end sleep\n");
   if(ee.bWiFiEnabled)
     startWiFi();
   if(ee.bBtEnabled)
@@ -454,22 +483,24 @@ void Display::startSwipe()
   switch(touch.gestureID)
   {
     case SWIPE_RIGHT:
-      if(m_nCurrTile <= 0) // don't screoll if button pressed or screen 0
+      if( (m_nCurrTile <= 0) // don't screoll if button pressed or screen 0
+        || (m_tile[m_nCurrTile].nRow != m_tile[m_nCurrTile-1].nRow) ) // don't scroll left if leftmost
+      {
+        swipeBump();
         break;
-  
-      if(m_tile[m_nCurrTile].nRow != m_tile[m_nCurrTile-1].nRow) // don't scroll left if leftmost
-        break;
+      }
 
       m_nLastRow = m_nCurrRow;
       m_nNextTile = m_nCurrTile - 1;
       m_bSwipeReady = true;
       break;
     case SWIPE_LEFT:
-      if(m_nCurrTile >= m_nTileCnt - 1) // don't scroll if button pressed or last screen
+      if( (m_nCurrTile >= m_nTileCnt - 1) // don't scroll if last screen
+        || (m_tile[m_nCurrTile].nRow != m_tile[m_nCurrTile+1].nRow) ) // don't scroll right if rightmost
+      {
+        swipeBump();
         break;
-  
-      if(m_tile[m_nCurrTile].nRow != m_tile[m_nCurrTile+1].nRow) // don't scroll right if rightmost
-        break;
+      }
   
       m_nNextTile = m_nCurrTile + 1; // save for snap
       m_nLastRow = m_nCurrRow;
@@ -477,7 +508,10 @@ void Display::startSwipe()
       break;
     case SWIPE_DOWN:
       if(m_nCurrTile == 0 || m_nCurrRow == 0) // don't slide up from top
+      {
+        swipeBump();
         break;
+      }
   
       nRowOffset = m_nCurrTile - m_nRowStart[m_nCurrRow];
       m_nLastRow = m_nCurrRow;
@@ -488,7 +522,10 @@ void Display::startSwipe()
       break;
     case SWIPE_UP:
       if(m_nCurrRow == m_nTileCnt-1)
+      {
+        swipeBump();
         break;
+      }
 
       nRowOffset = m_nCurrTile - m_nRowStart[m_nCurrRow];
       m_nLastRow = m_nCurrRow;
@@ -526,16 +563,32 @@ void Display::swipeTile(int16_t dX, int16_t dY)
   drawSwipeTiles();
 }
 
+// do some kind of visual effect
+void Display::swipeBump()
+{
+  switch(touch.gestureID)
+  {
+    case SWIPE_RIGHT: // >>>
+      break;
+    case SWIPE_LEFT: // <<<
+      break;
+    case SWIPE_DOWN:
+      break;
+    case SWIPE_UP:
+      break;
+  }
+}
+
 // finish unfinished swipe
 void Display::snapTile()
 {
   if(m_bSwipeReady == false)
     return;
 
-  const uint8_t nSpeed = 20;
+  uint8_t nSpeed = 50;
  
   // snap back if moved <50%ish
-  if(m_swipePos < 100)
+  if(m_swipePos < 120) //todo: should be half width or height
   {
     m_nCurrRow = m_nLastRow;
 
@@ -546,6 +599,7 @@ void Display::snapTile()
       else
         m_swipePos = 0;
       drawSwipeTiles();
+      nSpeed -= 5;
     }
     return;
   }
@@ -559,6 +613,7 @@ void Display::snapTile()
     else
       m_swipePos = space;
     drawSwipeTiles();
+    nSpeed -= 5;
   }
 
   m_nCurrTile = m_nNextTile;
@@ -664,14 +719,28 @@ void Display::oneSec()
       formatButtons(pTile);
     }
   }
+}
+
+void Display::battRead()
+{
+  static uint32_t ms;
+
+  uint32_t ms2 = millis();
+  if(ms2 - ms < 200) // run every 200ms
+    return;
+
+  ms = ms2;
 
   static uint16_t v[8];
   static uint8_t nV = 0;
   v[nV] = analogRead(BATTV);
 
-  if(m_vadc < v[nV] - 50) // charging usually jumps about 300+/-
+  if(ee.vadcMax < v[nV])
+    ee.vadcMax = v[nV]; // calibration
+
+  if(m_vadc < v[nV] - 29) // charging usually jumps about 300+/-, 30 on new one
     m_bCharging = true;
-  else if(m_vadc > v[nV] + 50)
+  else if(m_vadc > v[nV] + 29)
     m_bCharging = false;
 
   if(++nV >= 8) nV= 0;
@@ -688,6 +757,7 @@ bool Display::snooze(uint32_t ms)
 
   static uint32_t oldMs;
 
+  ets_printf("snooze\n");
   if(ms != oldMs)
   { 
     oldMs = ms;
@@ -703,9 +773,12 @@ bool Display::snooze(uint32_t ms)
     delay(100);
     esp_deep_sleep_start();
   }
-  
-  esp_light_sleep_start();
+  else
+  {
+    esp_light_sleep_start();
+  }
 
+  delay(1000);
   esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
   return (wakeup_reason != ESP_SLEEP_WAKEUP_TIMER);
 }
@@ -915,7 +988,7 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed, int16_t x, in
       break;
     case BTF_Volts:
       {
-#if (USER_SETUP_ID == 302)
+#if (USER_SETUP_ID == 302 || USER_SETUP_ID == 303)
         float fV = 3.3 / 4096 * 3 * m_vadc;
 #else
         float fV = 3.3 / 4096 * 3.22 * m_vadc; // fudged for 1.69"
@@ -1196,6 +1269,7 @@ void Display::dimmer()
     m_bright --;
 
   analogWrite(TFT_BL, m_bright);
+  ets_printf("dim %d\n", m_bright);
 }
 
 void Display::drawArcSlider(ArcSlider& slider, uint8_t newValue, int16_t x, int16_t y)
@@ -1434,6 +1508,7 @@ void Display::drawArcText(String s, int16_t angle, int8_t distance)
 // Flash a red indicator for RX, TX, PC around the top 
 void Display::RingIndicator(uint8_t n)
 {
+#ifdef ROUND_DISPLAY
   uint16_t ang = 130;
 
   switch(n)
@@ -1450,4 +1525,24 @@ void Display::RingIndicator(uint8_t n)
   }
 
   tft.drawSmoothArc(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, 119, 115, ang, ang+8, TFT_RED, bgColor, true);
+
+#else // non-round displays
+
+  uint16_t pos = 0;
+
+  switch(n)
+  {
+    case 0: // IR TX
+      pos = 10;
+      break;
+    case 1: // IR RX
+      pos = DISPLAY_WIDTH/2 - 20;
+      break;
+    case 2: // PC TX
+      pos = DISPLAY_WIDTH - 40;
+      break;
+  }
+
+  tft.drawWideLine(pos, pos + 20, 3, 4, TFT_RED, bgColor);
+#endif
 }
