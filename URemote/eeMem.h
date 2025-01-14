@@ -45,7 +45,8 @@ public:
     {"Basement", 0},
     {},
   };
-  uint8_t  reserved[56];           // Note: To force an EEPROM update, just subtract 1 byte and flash again
+  uint16_t vadcMax = 1400;
+  uint8_t  reserved[54];           // Note: To force an EEPROM update, just subtract 1 byte and flash again
   uint8_t  end;
 
 private:
