@@ -448,7 +448,6 @@ void Display::startSleep()
   if(m_bSleeping || m_sleepTimer)
     return;
 
-  ets_printf("start sleep\n");
   m_bSleeping = true;
   m_brightness = ee.brightLevel[0] + 1; // no screensaver
   analogWrite(TFT_BL, m_bright = 0);
@@ -466,7 +465,6 @@ void Display::endSleep()
   m_sleepTimer = 0;
   m_bSleeping = false;
 
-ets_printf("end sleep\n");
   if(ee.bWiFiEnabled)
     startWiFi();
   if(ee.bBtEnabled)
@@ -1085,7 +1083,8 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed, int16_t x, in
     sprite.drawRoundRect(x + pBtn->x, yOffset, pBtn->w, pBtn->h, radius, TFT_CYAN);
 
     const uint8_t pad = 5;
-    uint8_t x2 = x + pBtn->x + (pBtn->w>>1);
+    int16_t x2 = x + pBtn->x + (pBtn->w>>1);
+
     if(pBtn->flags & (BF_ARROW_UP|BF_ARROW_DOWN))
       sprite.drawWideLine(x2, yOffset + pad, x2, yOffset + pBtn->h - pad, 4, TFT_CYAN, colorBg);
     else
@@ -1568,6 +1567,6 @@ void Display::RingIndicator(uint8_t n)
       break;
   }
 
-  tft.drawWideLine(pos, pos + 20, 3, 4, TFT_RED, bgColor);
+  tft.drawWideLine(pos, 5, pos + 20, 5, 4, TFT_RED, bgColor);
 #endif
 }
