@@ -3,7 +3,6 @@
 
 #include <Arduino.h>
 #include <TFT_eSPI.h> // TFT_eSPI library from library manager?
-#include "arrows.h"
 
 // from 5-6-5 to 16 bit value (max 31, 63, 31)
 #define rgb16(r,g,b) ( ((uint16_t)r << 11) | ((uint16_t)g << 5) | (uint16_t)b )
@@ -83,13 +82,17 @@ enum Button_Function
 };
 
 // Button flags
-#define BF_BORDER  (1 << 0) // Just a text time, not button
-#define BF_REPEAT  (1 << 1) // repeatable (hold)
-#define BF_STATE_2 (1 << 2) // tri-state
-#define BF_FIXED_POS (1 << 3)
-#define BF_TEXT    (1<< 4)
-#define BF_SLIDER_H (1<< 5)
-#define BF_SLIDER_V (1<< 6)
+#define BF_BORDER     (1 << 0) // Just a text time, not button
+#define BF_REPEAT     (1 << 1) // repeatable (hold)
+#define BF_STATE_2    (1 << 2) // tri-state
+#define BF_FIXED_POS  (1 << 3)
+#define BF_TEXT       (1<< 4)
+#define BF_SLIDER_H   (1<< 5)
+#define BF_SLIDER_V   (1<< 6)
+#define BF_ARROW_UP   (1<< 7)
+#define BF_ARROW_DOWN (1<< 8)
+#define BF_ARROW_LEFT (1<< 9)
+#define BF_ARROW_RIGHT (1<< 10)
 
 // Tile extras
 #define EX_NONE  (0)
@@ -119,7 +122,7 @@ struct Button
   uint16_t h;              // ""
   uint16_t data[4];       // codes for IR, BT HID, etc (1=slider value, 2=prev slider value)
   int16_t x;
-  int16_t y; // y can go over 240 (scrollable pages)
+  int16_t y;
 };
 
 #define SLIDER_CNT 2 // increase for more arc sliders per tile
@@ -240,22 +243,22 @@ Tile layout
       0,
       NULL,
       {
-        { 0, 0, BTF_IR, "1", {0}, 48, 32,  {SAMSUNG,0x7,4, 3}},
-        { 0, 0, BTF_IR, "2", {0}, 48, 32,  {SAMSUNG,0x7,5,3}},
-        { 0, 0, BTF_IR, "3", {0}, 48, 32,  {SAMSUNG,0x7,6,3}},
-        { 0, BF_REPEAT, BTF_IR, NULL, {i_up, 0}, 32, 32, {SAMSUNG, 0x7,7, 3}},
+        { 0, 0, BTF_IR, "1", {0}, 48, 32, {SAMSUNG,0x7,4, 3}},
+        { 0, 0, BTF_IR, "2", {0}, 48, 32, {SAMSUNG,0x7,5,3}},
+        { 0, 0, BTF_IR, "3", {0}, 48, 32, {SAMSUNG,0x7,6,3}},
+        { 0, BF_REPEAT|BF_ARROW_UP, BTF_IR, NULL, {0}, 32, 32, {SAMSUNG, 0x7,7, 3}},
         { 1, 0, BTF_IR,"4", {0}, 48, 32, {SAMSUNG,0x7,8,3}},
         { 1, 0, BTF_IR,"5", {0}, 48, 32, {SAMSUNG,0x7,9,3}},
         { 1, 0, BTF_IR,"6", {0}, 48, 32, {SAMSUNG,0x7,10,3}},
-        { 1, BF_REPEAT,BTF_IR,  NULL, {i_dn, 0}, 32, 32, {SAMSUNG, 0x7,0xE6,3}},
+        { 1, BF_REPEAT|BF_ARROW_DOWN,BTF_IR,  NULL, {0}, 32, 32, {SAMSUNG, 0x7,0xE6,3}},
         { 2, 0, BTF_IR,"7", {0}, 48, 32, {SAMSUNG,0x7,11,3}},
         { 2, 0, BTF_IR,"8", {0}, 48, 32, {SAMSUNG,0x7,12,3}},
         { 2, 0, BTF_IR,"9", {0}, 48, 32, {SAMSUNG,0x7,13,3}},
-        { 2, BF_REPEAT, BTF_IR, NULL, {i_up, 0}, 32, 32, {SAMSUNG, 0x7,0x61,3}},
+        { 2, BF_REPEAT|BF_ARROW_RIGHT, BTF_IR, NULL, {0}, 32, 32, {SAMSUNG, 0x7,0x61,3}},
         { 3, 0, BTF_IR,"H", {0}, 48, 32, {SAMSUNG,0x7,0x79,3}},
         { 3, 0, BTF_IR,"0", {0}, 48, 32, {SAMSUNG,0x7,0x11,3}},
         { 3, 0, BTF_IR,"<", {0}, 48, 32, {SAMSUNG,0x7,0x13,3}},
-        { 3, BF_REPEAT, BTF_IR, NULL, {i_dn, 0}, 32, 32, {SAMSUNG, 0x7,11,3}},
+        { 3, BF_REPEAT|BF_ARROW_LEFT, BTF_IR, NULL, {0}, 32, 32, {SAMSUNG, 0x7,11,3}},
         {0xFF}
       }
     },
@@ -273,9 +276,9 @@ Tile layout
       0,
       NULL,
       {
-        { 0, BF_REPEAT, BTF_PC_Media, NULL,  {i_lt, 0}, 32, 32, {3,0}},
+        { 0, BF_REPEAT|BF_ARROW_LEFT, BTF_PC_Media, NULL,  {0}, 32, 32, {3,0}},
         { 0, 0, BTF_PC_Media,       "Play",  {0}, 60, 32, {0,0}},
-        { 0, BF_REPEAT, BTF_PC_Media, NULL,  {i_rt, 0}, 32, 32, {2,0}},
+        { 0, BF_REPEAT|BF_ARROW_RIGHT, BTF_PC_Media, NULL,  {0, 0}, 32, 32, {2,0}},
         { 1, 0, BTF_PC_Media,        "STOP", {0}, 60, 32, {1,0}},
         { 2, BF_SLIDER_H, BTF_PC_Media, "",  {0}, 120, 32, {1001,0}},
         { 3, 0, BTF_PC_Media,        "Mute", {0}, 60, 32, {4,0}},
@@ -321,10 +324,10 @@ Tile layout
         { 0, BF_TEXT, 0, "",  {0}, 32, 32, {0}}, // spacer
         { 1, BF_TEXT, 0, " In:",  {0}, 38, 32, {1,0}},
         { 1, BF_BORDER|BF_TEXT, BTF_Stat_Temp, "",  {0}, 60, 32, {1,0}},
-        { 1, BF_REPEAT, BTF_StatCmd, NULL, {i_up, 0}, 32, 32, {0}},
+        { 1, BF_REPEAT|BF_ARROW_UP, BTF_StatCmd, NULL, {0}, 32, 32, {0}},
         { 2, BF_TEXT, 0, "Set:",  {0}, 0, 32, {1,0}},
         { 2, BF_BORDER|BF_TEXT, BTF_Stat_SetTemp, "",  {0}, 60, 32, {1,0}},
-        { 2, BF_REPEAT, BTF_StatCmd, NULL, {i_dn, 0}, 32, 32, {1}},
+        { 2, BF_REPEAT|BF_ARROW_DOWN, BTF_StatCmd, NULL, {0}, 32, 32, {1}},
         { 3, 0, BTF_Stat_Fan, "Fan", {0, 0}, 0, 32, {2}},
         {0xFF}
       }
