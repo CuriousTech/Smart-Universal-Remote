@@ -254,11 +254,11 @@ Tile layout
         { 2, 0, BTF_IR,"7", {0}, 48, 32, {SAMSUNG,0x7,11,3}},
         { 2, 0, BTF_IR,"8", {0}, 48, 32, {SAMSUNG,0x7,12,3}},
         { 2, 0, BTF_IR,"9", {0}, 48, 32, {SAMSUNG,0x7,13,3}},
-        { 2, BF_REPEAT|BF_ARROW_RIGHT, BTF_IR, NULL, {0}, 32, 32, {SAMSUNG, 0x7,0x61,3}},
+        { 2, BF_REPEAT|BF_ARROW_UP, BTF_IR, NULL, {0}, 32, 32, {SAMSUNG, 0x7,0x61,3}},
         { 3, 0, BTF_IR,"H", {0}, 48, 32, {SAMSUNG,0x7,0x79,3}},
         { 3, 0, BTF_IR,"0", {0}, 48, 32, {SAMSUNG,0x7,0x11,3}},
         { 3, 0, BTF_IR,"<", {0}, 48, 32, {SAMSUNG,0x7,0x13,3}},
-        { 3, BF_REPEAT|BF_ARROW_LEFT, BTF_IR, NULL, {0}, 32, 32, {SAMSUNG, 0x7,11,3}},
+        { 3, BF_REPEAT|BF_ARROW_DOWN, BTF_IR, NULL, {0}, 32, 32, {SAMSUNG, 0x7,11,3}},
         {0xFF}
       }
     },
