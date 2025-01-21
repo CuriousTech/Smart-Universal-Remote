@@ -941,15 +941,6 @@ void Display::drawTile(int8_t nTile, bool bFirst, int16_t x, int16_t y)
 
 void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed, int16_t x, int16_t y)
 {
-  uint8_t nState = (pBtn->flags & BF_STATE_2) ? 1:0;
-  uint16_t colorBg = (nState) ? TFT_NAVY : TFT_DARKGREY;
-
-  if(bPressed)
-  {
-    nState = 1;
-    colorBg = TFT_DARKCYAN;
-  }
-
   String s = pBtn->pszText;
 
   switch(pBtn->nFunction)
@@ -1062,6 +1053,16 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed, int16_t x, in
 
   yOffset += y; // swipe offset
 
+  const int radius = 5;
+  uint8_t nState = (pBtn->flags & BF_STATE_2) ? 1:0;
+  uint16_t colorBg = (nState) ? TFT_NAVY : TFT_DARKGREY;
+
+  if(bPressed)
+  {
+    nState = 1;
+    colorBg = TFT_DARKCYAN;
+  }
+
   if(pBtn->flags & BF_SLIDER_H)
   {
     const uint8_t sz = 10;
@@ -1078,12 +1079,36 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed, int16_t x, in
     sprite.drawWideLine(x + pBtn->x + (pBtn->w>>1), yOffset, x + pBtn->x + (pBtn->w>>1), yOffset + pBtn->h, 5, TFT_BLUE, bgColor);
     sprite.drawSpot(x + pBtn->x + (pBtn->w>>1), yOffset + sz + (100 - pBtn->data[1]) * (pBtn->h - sz*2) / 100, sz, TFT_YELLOW);
   }
+  else if(pBtn->flags & (BF_ARROW_UP|BF_ARROW_DOWN|BF_ARROW_LEFT|BF_ARROW_RIGHT))
+  {
+    sprite.fillRoundRect(x + pBtn->x, yOffset, pBtn->w, pBtn->h, radius, colorBg);
+    sprite.drawRoundRect(x + pBtn->x, yOffset, pBtn->w, pBtn->h, radius, TFT_CYAN);
+
+    const uint8_t pad = 5;
+    uint8_t x2 = x + pBtn->x + (pBtn->w>>1);
+    if(pBtn->flags & (BF_ARROW_UP|BF_ARROW_DOWN))
+      sprite.drawWideLine(x2, yOffset + pad, x2, yOffset + pBtn->h - pad, 4, TFT_CYAN, colorBg);
+    else
+      sprite.drawWideLine(x + pBtn->x + pad, yOffset + (pBtn->h>>1), x + pBtn->x + pBtn->w - pad, yOffset + (pBtn->h>>1), 4, TFT_CYAN, colorBg);
+
+    if(pBtn->flags & (BF_ARROW_UP|BF_ARROW_LEFT))
+      sprite.drawWideLine(x2, yOffset + pad, x + pBtn->x + pad, yOffset + (pBtn->h>>1), 4, TFT_CYAN, colorBg);
+
+    if(pBtn->flags & (BF_ARROW_UP|BF_ARROW_RIGHT))
+      sprite.drawWideLine(x2, yOffset + pad, x + pBtn->x + pBtn->w - pad, yOffset + (pBtn->h>>1), 4, TFT_CYAN, colorBg);
+
+    if(pBtn->flags & (BF_ARROW_DOWN|BF_ARROW_LEFT))
+      sprite.drawWideLine(x + pBtn->x + pad, yOffset + (pBtn->h>>1), x2, yOffset + pBtn->h - pad, 4, TFT_CYAN, colorBg);
+
+    if(pBtn->flags & (BF_ARROW_DOWN|BF_ARROW_RIGHT))
+      sprite.drawWideLine(x + pBtn->x + pBtn->w - pad, yOffset + (pBtn->h>>1), x2, yOffset + pBtn->h - pad, 4, TFT_CYAN, colorBg);
+  }
   else if(pBtn->pIcon[nState]) // draw an image if given
     sprite.pushImage(x + pBtn->x, yOffset, pBtn->w, pBtn->h, pBtn->pIcon[nState]);
   else if(pBtn->flags & BF_BORDER) // bordered text item
-    sprite.drawRoundRect(x + pBtn->x, yOffset, pBtn->w, pBtn->h, 5, colorBg);
+    sprite.drawRoundRect(x + pBtn->x, yOffset, pBtn->w, pBtn->h, radius, colorBg);
   else if(!(pBtn->flags & BF_TEXT) ) // if no image, or no image for state 2, and not just text, fill with a color
-    sprite.fillRoundRect(x + pBtn->x, yOffset, pBtn->w, pBtn->h, 5, colorBg);
+    sprite.fillRoundRect(x + pBtn->x, yOffset, pBtn->w, pBtn->h, radius, colorBg);
 
   if(s.length())
   {
