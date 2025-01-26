@@ -246,6 +246,7 @@ void Display::service(void)
       {
         checkButtonHit(touchXstart, touchYstart);
       }
+      touch.gestureID = 0;
     }
     else // 2=active
     {
@@ -342,7 +343,8 @@ void Display::service(void)
           if(m_pCurrBtn && (m_pCurrBtn->flags & (BF_REPEAT|BF_SLIDER_H|BF_SLIDER_V)) )
           {
             buttonCmd(m_pCurrBtn, true);
-            bSliderHit = true;
+            if(m_pCurrBtn->flags & (BF_SLIDER_H|BF_SLIDER_V)) 
+              bSliderHit = true;
           }
           m_lastms = millis();
         }
@@ -519,7 +521,7 @@ void Display::startSwipe()
       m_bSwipeReady = true;
       break;
     case SWIPE_UP:
-      if(m_nCurrRow == m_nTileCnt-1)
+      if(m_nCurrRow == m_tile[m_nTileCnt-1].nRow)
       {
         swipeBump();
         break;
@@ -567,14 +569,24 @@ void Display::swipeBump()
   switch(touch.gestureID)
   {
     case SWIPE_RIGHT: // >>>
+      tft.fillRect(0, 0, 5, DISPLAY_HEIGHT, TFT_BLUE);
+      sprite.pushSprite(5, 0);
       break;
     case SWIPE_LEFT: // <<<
+      tft.fillRect(DISPLAY_WIDTH-5, 0, 5, DISPLAY_HEIGHT, TFT_BLUE);
+      sprite.pushSprite(-5, 0);
       break;
     case SWIPE_DOWN:
+      tft.fillRect(0, 0, DISPLAY_WIDTH, 5, TFT_BLUE);
+      sprite.pushSprite(0, 5);
       break;
     case SWIPE_UP:
+      tft.fillRect(0, DISPLAY_HEIGHT-5, DISPLAY_WIDTH, 5, TFT_BLUE);
+      sprite.pushSprite(0, -5);
       break;
   }
+  delay(50);
+  sprite.pushSprite(0, 0);
 }
 
 // finish unfinished swipe
@@ -584,9 +596,12 @@ void Display::snapTile()
     return;
 
   uint8_t nSpeed = 50;
- 
-  // snap back if moved <50%ish
-  if(m_swipePos < 120) //todo: should be half width or height
+  uint16_t space = DISPLAY_HEIGHT;
+
+  if( touch.gestureID == SWIPE_LEFT || touch.gestureID == SWIPE_RIGHT)
+    space = DISPLAY_WIDTH;
+
+  if(m_swipePos < space/2)
   {
     m_nCurrRow = m_nLastRow;
 
@@ -601,8 +616,6 @@ void Display::snapTile()
     }
     return;
   }
-
-  uint16_t space = (touch.gestureID <= SWIPE_UP) ? DISPLAY_HEIGHT : DISPLAY_WIDTH;
 
   while( m_swipePos < space)
   {
@@ -701,17 +714,21 @@ void Display::oneSec()
 
       if(pTile.Extras)
       {
-        uint8_t i;
-        for(i = 1; i < BUTTON_CNT; i++)
-        {
-          if(ee.lights[i - 1].szName[0] == 0) // end of list
+        uint8_t i, i2;
+
+        for(i = 0; i < BUTTON_CNT - 1; i++)
+          if(pTile.button[i].row == 0xFF)
             break;
-          pTile.button[i].pszText = ee.lights[i - 1].szName;
+
+        for(; i < BUTTON_CNT - 1 && ee.lights[i2].szName[0]; i++, i2++)
+        {
+          pTile.button[i].pszText = ee.lights[i2].szName;
           pTile.button[i].row = i;
           pTile.button[i].w = 110;
           pTile.button[i].h = 28;
           pTile.button[i].nFunction = BTF_Lights;
         }
+
         pTile.button[i].row = 0xFF; // end row
       }
       formatButtons(pTile);
@@ -919,7 +936,7 @@ void Display::drawTile(int8_t nTile, bool bFirst, int16_t x, int16_t y)
 
   if(pTile.pszTitle && pTile.pszTitle[0])
   {
-    sprite.fillRect(x, y, DISPLAY_WIDTH, 40, bgColor); // cover any scrolled buttons/text
+    sprite.fillRect(x, y, DISPLAY_WIDTH, TITLE_HEIGHT, bgColor); // cover any scrolled buttons/text
     sprite.setTextColor(rgb16(16,63,0), bgColor );
     sprite.drawString(pTile.pszTitle, x + DISPLAY_WIDTH/2, y + 27);
   }
@@ -1038,6 +1055,9 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed, int16_t x, in
         pBtn->flags |= BF_STATE_2;
       else
         pBtn->flags &= ~BF_STATE_2;      
+      break;
+    case BTF_Brightness:
+      pBtn->data[1] = m_brightness;
       break;
   }
 
