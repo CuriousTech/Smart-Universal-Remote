@@ -109,13 +109,14 @@ struct ArcSlider
   uint16_t nPos;          // angle from 12 o'clock
   uint16_t nSize;         // Size in degrees
   uint8_t  nValue;        // 0-100 value of screen's slider
+  uint8_t pad;
 };
 
 struct Button
 {
-  uint8_t row;            // Used with w to calculate x positions
+  uint16_t row;            // Used with w to calculate x positions
   uint16_t flags;          // see BF_ flags
-  uint8_t nFunction;     // see enum Button_Function
+  uint16_t nFunction;     // see enum Button_Function
   const char *pszText;    // Button text
   const unsigned short *pIcon[2]; // Normal, pressed icons
   uint16_t w;              // calculated if 0
