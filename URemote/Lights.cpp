@@ -17,9 +17,12 @@ Lights::Lights()
 
 void Lights::init()
 {
-  m_bQuery = true;
-  IPAddress ip(ee.lightIp);
-  send(ip, 80, "/mdns");
+  if(ee.lights[0].ip[0])
+  {
+    m_bQuery = true;
+    IPAddress ip(ee.lights[0].ip);
+    send(ip, 80, "/mdns");
+  }
 }
 
 bool Lights::setSwitch(int8_t nSwitch, bool bPwr, uint8_t nLevel)
