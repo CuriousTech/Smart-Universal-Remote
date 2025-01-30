@@ -31,7 +31,6 @@ public:
   bool     bBtEnabled = false;
   bool     bWiFiEnabled = true;
   uint8_t  res;
-  uint8_t  lightIp[4] = {192,168,31,73}; // Device to get all lights/switches/dimmers IP list
   uint8_t  hostIp[4] = {192,168,31,100};
   uint8_t  hostPort = 85;
   uint8_t  brightLevel[2] = {30, 180}; // brightness {dim, highest}
@@ -41,8 +40,7 @@ public:
 #define EE_LIGHT_CNT 18
   iotLight lights[EE_LIGHT_CNT] =
   {
-    {"LivingRoom", 0}, // Fill in priority
-    {"Basement", 0},
+    {"LivingRoom", {192,168,31,73}}, // IP for discovery
     {},
   };
   uint16_t vadcMax = 1400;
