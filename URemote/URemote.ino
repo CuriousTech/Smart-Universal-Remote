@@ -45,7 +45,7 @@ SOFTWARE.
 #include <TimeLib.h> // https://github.com/PaulStoffregen/Time
 #include <UdpTime.h> // https://github.com/CuriousTech/ESP07_WiFiGarageDoor/tree/master/libraries/UdpTime
 
-#include <FFat.h>
+#include "Media.h"
 #include "eeMem.h"
 #include <ESPmDNS.h>
 #ifdef OTA_ENABLE
@@ -57,6 +57,8 @@ SOFTWARE.
 #include <JsonParse.h> // https://github.com/CuriousTech/ESP-HVAC/tree/master/Libraries/JsonParse
 #include "jsonString.h"
 #include "pages.h"
+
+Media media;
 
 AsyncWebServer server( 80 );
 AsyncWebSocket ws("/ws"); // access at ws://[esp ip]/ws
@@ -353,6 +355,7 @@ const char *jsonListCmd[] = {
   "restart",
   "GDODOOR",
   "GDOCAR",
+  "delf",
   NULL
 };
 
@@ -423,8 +426,29 @@ void jsonCallback(int16_t iName, int iValue, char *psValue)
     case 17:
       display.m_bGdoCar = iValue;
       break;
+    case 18: // delf
+      media.deleteIFile(psValue);
+      ws.textAll(setupJson()); // update disk free
+      break;
   }
 }
+
+void onUploadInternal(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final)
+{
+  if(!index)
+  {
+    String sFile = "/";
+    sFile += filename;
+    request->_tempFile = INTERNAL_FS.open(sFile, "w");
+  }
+  if(len)
+   request->_tempFile.write((byte*)data, len);
+  if(final)
+  {
+    request->_tempFile.close();
+  }
+}
+
 #endif
 
 void startWiFi()
@@ -492,9 +516,19 @@ void startWiFi()
       response->addHeader("Content-Encoding", "gzip");
       request->send(response);
     });
+    server.on("/del-btn.png", HTTP_GET, [](AsyncWebServerRequest *request){
+      AsyncWebServerResponse *response = request->beginResponse_P(200, "image/png", delbtn_png, sizeof(delbtn_png));
+      request->send(response);
+    });
+    server.on ( "/upload_internal", HTTP_POST, [](AsyncWebServerRequest * request)
+    {
+      request->send( 200);
+      ws.textAll(setupJson()); // update free space
+    }, onUploadInternal);
     server.begin();
     jsonParse.setList(jsonListCmd);
   }
+  server.serveStatic("/fs", INTERNAL_FS, "/");
 #endif
 }
 
@@ -535,6 +569,8 @@ String setupJson()
   js.Var("tz", ee.tz);
   js.Var("st", ee.sleepTime);
   js.Var("ss", ee.ssTime);
+  uint32_t freeK = (INTERNAL_FS.totalBytes() - INTERNAL_FS.usedBytes()) / 1024;
+  js.Var("freek",  freeK);
   return js.Close();
 }
 
@@ -546,6 +582,7 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
     case WS_EVT_CONNECT:      //client connected
       client->text(setupJson());
       client->text(dataJson());
+      client->text( media.internalFileListJson(INTERNAL_FS, "/") );
       display.m_nWsConnected++;
       WsClientID = client->id();
       break;
@@ -582,6 +619,7 @@ void setup()
 
   ee.init();
   display.init();
+  media.init();
 
   if(ee.bWiFiEnabled)
     startWiFi();
