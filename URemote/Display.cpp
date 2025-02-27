@@ -1040,9 +1040,15 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed, int16_t x, in
       else
         pBtn->flags &= ~BF_STATE_2;      
       break;
-    case BTF_Brightness:
-      if(bInit)
+   case BTF_Brightness:
+      if(bInit) // only set when drawing tile, not user interaction
         pBtn->data[1] = m_brightness * 100 / 255;
+      s = "Brightness ";
+      s += pBtn->data[1];
+      break;
+    case BTF_PCVolume:
+      s = "Volume ";
+      s += pBtn->data[1];
       break;
   }
 
@@ -1051,7 +1057,7 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed, int16_t x, in
   if( !(pBtn->flags & BF_FIXED_POS) ) // don't scroll fixed pos buttons
     yOffset -= pTile.nScrollIndex;
 
-  if(yOffset < 10 || yOffset >= DISPLAY_HEIGHT) // cut off anything out of bounds (top is covered by title blank)
+  if(yOffset < (pTile.pszTitle[0] ? 10:0) || yOffset >= DISPLAY_HEIGHT) // cut off anything out of bounds (top is covered by title band)
     return;
 
   yOffset += y; // swipe offset
@@ -1066,23 +1072,7 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed, int16_t x, in
     colorBg = TFT_DARKCYAN;
   }
 
-  if(pBtn->flags & BF_SLIDER_H)
-  {
-    const uint8_t sz = 10;
-
-    sprite.drawWideLine(x + pBtn->r.x, yOffset + (pBtn->r.h>>1), x + pBtn->r.x + pBtn->r.w, yOffset + (pBtn->r.h>>1), sz<<1, bgColor, bgColor); // erase thee whole thing
-    sprite.drawWideLine(x + pBtn->r.x, yOffset + (pBtn->r.h>>1), x + pBtn->r.x + pBtn->r.w, yOffset + (pBtn->r.h>>1), 5, TFT_BLUE, bgColor);
-    sprite.drawSpot(x + pBtn->r.x + sz + pBtn->data[1] * (pBtn->r.w - sz*2) / 100, yOffset + 15, sz, TFT_YELLOW);
-  }
-  else if(pBtn->flags & BF_SLIDER_V)
-  {
-    const uint8_t sz = 10;
-
-    sprite.drawWideLine(x + pBtn->r.x + (pBtn->r.w>>1), yOffset, x + pBtn->r.x + (pBtn->r.w>>1), yOffset + pBtn->r.h, sz<<2, bgColor, bgColor);
-    sprite.drawWideLine(x + pBtn->r.x + (pBtn->r.w>>1), yOffset, x + pBtn->r.x + (pBtn->r.w>>1), yOffset + pBtn->r.h, 5, TFT_BLUE, bgColor);
-    sprite.drawSpot(x + pBtn->r.x + (pBtn->r.w>>1), yOffset + sz + (100 - pBtn->data[1]) * (pBtn->r.h - sz*2) / 100, sz, TFT_YELLOW);
-  }
-  else if(pBtn->flags & (BF_ARROW_UP|BF_ARROW_DOWN|BF_ARROW_LEFT|BF_ARROW_RIGHT))
+  if(pBtn->flags & (BF_ARROW_UP|BF_ARROW_DOWN|BF_ARROW_LEFT|BF_ARROW_RIGHT))
   {
     sprite.fillRoundRect(x + pBtn->r.x, yOffset, pBtn->r.w, pBtn->r.h, radius, colorBg);
     sprite.drawRoundRect(x + pBtn->r.x, yOffset, pBtn->r.w, pBtn->r.h, radius, TFT_CYAN);
@@ -1111,17 +1101,43 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed, int16_t x, in
     sprite.pushImage(x + pBtn->r.x, yOffset, pBtn->r.w, pBtn->r.h, pBtn->pIcon[nState]);
   else if(pBtn->flags & BF_BORDER) // bordered text item
     sprite.drawRoundRect(x + pBtn->r.x, yOffset, pBtn->r.w, pBtn->r.h, radius, colorBg);
-  else if(!(pBtn->flags & BF_TEXT) ) // if no image, or no image for state 2, and not just text, fill with a color
+  else if( (pBtn->flags & (BF_TEXT|BF_SLIDER_H|BF_SLIDER_V)) == 0 ) // if no image, or no image for state 2, and not just text, fill with a color
     sprite.fillRoundRect(x + pBtn->r.x, yOffset, pBtn->r.w, pBtn->r.h, radius, colorBg);
+
+  const uint8_t dotSz = 10;
+  if(pBtn->flags & BF_SLIDER_H)
+    sprite.drawWideLine(x + pBtn->r.x, yOffset + (pBtn->r.h>>1), x + pBtn->r.x + pBtn->r.w, yOffset + (pBtn->r.h>>1), dotSz<<1, bgColor, bgColor);
+  else if(pBtn->flags & BF_SLIDER_V)
+    sprite.drawWideLine(x + pBtn->r.x + (pBtn->r.w>>1), yOffset, x + pBtn->r.x + (pBtn->r.w>>1), yOffset + pBtn->r.h, dotSz<<1, bgColor, bgColor); // erase old spot
 
   if(s.length())
   {
+    if(pBtn->pFont)
+      sprite.setFreeFont(pBtn->pFont);
+    else
+      sprite.setFreeFont(&FreeSans9pt7b); // default font
+
     if(pBtn->flags & BF_TEXT) // text only
-      sprite.setTextColor(TFT_WHITE, bgColor);
+      sprite.setTextColor(pBtn->textColor ? pBtn->textColor : TFT_WHITE,  bgColor);
     else
       sprite.setTextColor(TFT_CYAN, colorBg);
-    sprite.drawString( s, x + pBtn->r.x + (pBtn->r.w >> 1), yOffset + (pBtn->r.h >> 1) - 2 );
-  }  
+
+    if(pBtn->flags & BF_SLIDER_V) // vertical slider text
+      drawText(s, x + pBtn->r.x + 26, yOffset + (pBtn->r.h >> 1), 270, pBtn->textColor ? pBtn->textColor : TFT_WHITE,  bgColor, pBtn->pFont);
+    else // normal text
+      sprite.drawString( s, x + pBtn->r.x + (pBtn->r.w >> 1), yOffset + (pBtn->r.h >> 1) - 2 );
+  }
+
+  if(pBtn->flags & BF_SLIDER_H)
+  {
+    sprite.drawWideLine(x + pBtn->r.x, yOffset + (pBtn->r.h>>1), x + pBtn->r.x + pBtn->r.w, yOffset + (pBtn->r.h>>1), 5, TFT_BLUE, bgColor);
+    sprite.drawSpot(x + pBtn->r.x + dotSz + pBtn->data[1] * (pBtn->r.w - dotSz*2) / 100, yOffset + 15, dotSz, TFT_YELLOW);
+  }
+  else if(pBtn->flags & BF_SLIDER_V)
+  {
+    sprite.drawWideLine(x + pBtn->r.x + (pBtn->r.w>>1), yOffset, x + pBtn->r.x + (pBtn->r.w>>1), yOffset + pBtn->r.h, 5, TFT_BLUE, bgColor);
+    sprite.drawSpot(x + pBtn->r.x + (pBtn->r.w>>1), yOffset + dotSz + (100 - pBtn->data[1]) * (pBtn->r.h - dotSz*2) / 100, dotSz, TFT_YELLOW);
+  }
 }
 
 // called when button is activated
@@ -1357,6 +1373,9 @@ void Display::drawArcSlider(ArcSlider& slider, uint8_t newValue, int16_t x, int1
   if(angle < 180) angle += 360;
   if(angle > 360) angle -= 360;
 
+  if(slider.pszText)
+    drawArcText(slider.pszText, x, y, slider.pFont, slider.textColor, angle, 90);
+
   cspoint(ax, ay, DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, angle, dist);
   sprite.drawSpot(x+ax, y+ay, 10, TFT_YELLOW);
 }
@@ -1471,17 +1490,16 @@ void Display::setSliderValue(uint8_t st, int8_t iValue)
   }
 }
 
-void Display::drawText(String s, int16_t x, int16_t y, int16_t angle)
+void Display::drawText(String s, int16_t x, int16_t y, int16_t angle, uint16_t cFg, uint16_t cBg, const GFXfont *pFont)
 {
   TFT_eSprite textSprite = TFT_eSprite(&tft);
 
 #if (USER_SETUP_ID==302) // 240x240
   textSprite.setSwapBytes(true);
 #endif
-
   textSprite.setTextDatum(TL_DATUM);
-  textSprite.setTextColor(TFT_WHITE, bgColor );
-  textSprite.setFreeFont(&FreeSans9pt7b);
+  textSprite.setTextColor(cFg, cBg);
+  textSprite.setFreeFont(pFont ?  pFont : &FreeSans9pt7b);
   int16_t w = textSprite.textWidth(s) + 2;
   int16_t h = textSprite.fontHeight() + 2;
   textSprite.createSprite(w, h);
@@ -1490,10 +1508,10 @@ void Display::drawText(String s, int16_t x, int16_t y, int16_t angle)
   textSprite.drawString(s, 0, 0);
   sprite.setPivot(x, y);
   textSprite.pushRotated(&sprite, angle);
-  sprite.setPivot(0, 0);
+//  sprite.setPivot(0, 0);
 }
 
-void Display::drawArcText(String s, int16_t angle, int8_t distance)
+void Display::drawArcText(String s, int16_t x, int16_t y, const GFXfont *pFont, uint16_t color, int16_t angle, int8_t distance)
 {
   TFT_eSprite textSprite = TFT_eSprite(&tft);
 
@@ -1502,23 +1520,21 @@ void Display::drawArcText(String s, int16_t angle, int8_t distance)
 #endif
 
   textSprite.setTextDatum(TL_DATUM);
-  textSprite.setTextColor(TFT_WHITE, bgColor );
-  textSprite.setFreeFont(&FreeSans9pt7b);
+  textSprite.setTextColor(color ? color : TFT_WHITE, bgColor );
+  textSprite.setFreeFont(pFont ? pFont : &FreeSans9pt7b);
 
-  int16_t w = textSprite.textWidth("A") + 3;
+  int16_t w = textSprite.textWidth("A") + 1;
   int16_t h = textSprite.fontHeight() + 3;
   textSprite.createSprite(w, h);
 
   uint8_t cnt = s.length();
+  angle -= textSprite.textWidth(s) / 2;
+
+  const float fx = DISPLAY_WIDTH/2; // center
+  const float fy = DISPLAY_HEIGHT/2;
+  int16_t x1, y1;
   String chStr;
 
-  const float fx = DISPLAY_WIDTH/2;// + x; // center
-  const float fy = DISPLAY_HEIGHT/2;// + y;
-  int16_t x1, y1;
-
-  int16_t inc = w * distance / 90;
-
-  // todo: decrement angle by half string
   for(uint8_t i = 0; i < cnt; i++)
   {
     chStr = s.charAt(i);
@@ -1527,8 +1543,9 @@ void Display::drawArcText(String s, int16_t angle, int8_t distance)
 
     textSprite.fillSprite( bgColor );
     textSprite.drawString(chStr, 0, 0);
-    sprite.setPivot(x1, y1);
-    textSprite.pushRotated(&sprite, angle += inc);
+    sprite.setPivot(x+x1, y+y1);
+    textSprite.pushRotated(&sprite, angle);
+    angle += textSprite.textWidth( chStr );
   }
   sprite.setPivot(0, 0);
 }
