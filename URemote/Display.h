@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <TFT_eSPI.h> // TFT_eSPI library from library manager?
+#include "fonts.h"
 
 // from 5-6-5 to 16 bit value (max 31, 63, 31)
 #define rgb16(r,g,b) ( ((uint16_t)r << 11) | ((uint16_t)g << 5) | (uint16_t)b )
@@ -79,6 +80,7 @@ enum Button_Function
   BTF_GdoCar,
   BTF_GdoCmd,
   BTF_Restart,
+  BTF_TrackBtn,
 };
 
 // Button flags
@@ -111,11 +113,14 @@ struct Rect{
 
 struct ArcSlider
 {
-  uint8_t  nFunc;         // see slider_func
-  uint8_t  flags;         // see SFL_xx
-  uint16_t nPos;          // angle from 12 o'clock
-  uint16_t nSize;         // Size in degrees
-  uint8_t  nValue;        // 0-100 value of screen's slider
+  uint8_t  nFunc;       // see slider_func
+  uint8_t  flags;       // see SFL_xx
+  uint16_t nPos;        // angle from 12 o'clock
+  uint16_t nSize;       // Size in degrees
+  const char *pszText;  // optional text
+  const GFXfont *pFont; // button text font (NULL = default)
+  uint16_t textColor;   // text color (0 = default for now)  
+  uint8_t  nValue;      // 0-100 value of screen's slider
   uint8_t pad;
 };
 
@@ -125,6 +130,8 @@ struct Button
   uint16_t flags;      // see BF_ flags
   uint16_t nFunction;  // see enum Button_Function
   const char *pszText; // Button text
+  const GFXfont *pFont; // button text font (NULL = default)
+  uint16_t textColor;   // text color (0 = default for now)
   const unsigned short *pIcon[2]; // Normal, pressed icons
   Rect r;             // Leave x,y 0 if not fixed, w,h calculated if 0, or set icon size here
   uint16_t data[4];   // codes for IR, BT HID, etc (data[1]=slider value)
@@ -179,8 +186,8 @@ private:
   void drawNotifs(Tile& pTile, int16_t x, int16_t y);
   void drawClock(int16_t x, int16_t y);
   bool arcSliderHit(ArcSlider& slider, uint8_t& value);
-  void drawText(String s, int16_t x, int16_t y, int16_t angle);
-  void drawArcText(String s, int16_t angle, int8_t distance);
+  void drawText(String s, int16_t x, int16_t y, int16_t angle, uint16_t cFg, uint16_t cBg, const GFXfont *pFont );
+  void drawArcText(String s, int16_t x, int16_t y, const GFXfont *pFont, uint16_t color, int16_t angle, int8_t distance);
   void cspoint(int16_t &x2, int16_t &y2, int16_t x, int16_t y, float angle, float size);
 
   void startSleep(void);
@@ -212,11 +219,15 @@ Tile layout
       0,
       0,//watchFace,
       {
-        { 0, BF_FIXED_POS, BTF_RSSI, "", {0}, {DISPLAY_WIDTH/2 - 26/2, 180 + 26, 26, 26}},
-        { 0, BF_FIXED_POS|BF_TEXT, BTF_Time, "12:00:00 AM", {0}, {DISPLAY_WIDTH/2-56, 50, 120, 32}},
-        { 0, BF_FIXED_POS|BF_TEXT, BTF_Date,  "Jan 01", {0}, {DISPLAY_WIDTH/2-40, 152, 80, 32} },
-        { 0, BF_FIXED_POS|BF_TEXT, BTF_DOW,   "Sun",  {0}, {170, DISPLAY_HEIGHT/2 - 15, 40, 32} },
-        { 0, BF_FIXED_POS|BF_TEXT, BTF_Volts, "4.20",  {0}, {28, DISPLAY_HEIGHT/2 - 15, 50, 32} },
+        { 0, BF_FIXED_POS|BF_TEXT, BTF_Time, "12:00:00 AM", NULL, 0, {0}, {DISPLAY_WIDTH/2-56, DISPLAY_HEIGHT/4, 120, 32}},
+        { 0, BF_FIXED_POS|BF_TEXT, BTF_Date,  "Jan 01", NULL, 0, {0}, {DISPLAY_WIDTH/2-40, DISPLAY_HEIGHT-DISPLAY_HEIGHT/3, 80, 32} },
+        { 0, BF_FIXED_POS|BF_TEXT, BTF_DOW,   "Sun", NULL, 0, {0}, {170, DISPLAY_HEIGHT/2 - 15, 40, 32} },
+        { 0, BF_FIXED_POS|BF_TEXT, BTF_Volts, "4.20", NULL, 0, {0}, {28, DISPLAY_HEIGHT/2 - 15, 50, 32} },
+#if defined(ROUND_DISPLAY) // round, use arc slider
+        { 0, BF_FIXED_POS, BTF_RSSI, "", NULL, 0, {0}, {DISPLAY_WIDTH/2 - 26/2, DISPLAY_HEIGHT - 35, 26, 26}},
+#else
+        { 0, BF_FIXED_POS, BTF_RSSI, "", NULL, 0, {0}, {4, DISPLAY_HEIGHT - 35, 26, 26}}, // bottom left corner
+#endif
         {0xFF}
       }
     },
@@ -229,12 +240,12 @@ Tile layout
       0,
       0,
       NULL,
-      {// r, F, fn,        text,   icons, {x, y, w, h}, {addr, code}
-        { 0, 0, BTF_IR,    "TV",     {0}, {0,0, 48, 30}, {SAMSUNG, 0x7,0xE6, 3}},
-        { 0, 0, BTF_IR,    "AMP",    {0}, {0,0, 48, 30}, {0, 0, 0x34}},
-        { 0, 0, BTF_IR,     "DVD",    {0}, {0,0, 48, 30}, {0, 0, 0x34}},
-        { 1, 0, BTF_Lights, "Light",  {0}, {0,0, 48, 30}, {0}}, // LivingRoom ID = 1
-        { 1, 0, BTF_Lights, "Switch", {0}, {0,0, 48, 30}, {0}}, // Other switch ID = 2
+      {// r, F, fn,        text,   font, color, icons, {x, y, w, h}, {addr, code}
+        { 0, 0, BTF_IR,    "TV",    NULL, 0,  {0}, {0,0, 48, 30}, {SAMSUNG, 0x7,0xE6, 3}},
+        { 0, 0, BTF_IR,    "AMP",  NULL, 0,   {0}, {0,0, 48, 30}, {0, 0, 0x34}},
+        { 0, 0, BTF_IR,     "DVD",   NULL, 0,  {0}, {0,0, 48, 30}, {0, 0, 0x34}},
+        { 1, 0, BTF_Lights, "Light", NULL, 0,  {0}, {0,0, 48, 30}, {0}}, // LivingRoom ID = 1
+        { 1, 0, BTF_Lights, "Switch", NULL, 0, {0}, {0,0, 48, 30}, {0}}, // Other switch ID = 2
         {0xFF}
       },
     },
@@ -248,22 +259,22 @@ Tile layout
       0,
       NULL,
       {
-        { 0, 0, BTF_IR, "1", {0}, {0,0, 48, 32}, {SAMSUNG,0x7,4, 3}},
-        { 0, 0, BTF_IR, "2", {0}, {0,0, 48, 32}, {SAMSUNG,0x7,5,3}},
-        { 0, 0, BTF_IR, "3", {0}, {0,0, 48, 32}, {SAMSUNG,0x7,6,3}},
-        { 0, BF_REPEAT|BF_ARROW_UP, BTF_IR, NULL, {0}, {0,0, 32, 32}, {SAMSUNG, 0x7,7, 3}},
-        { 1, 0, BTF_IR,"4", {0}, {0,0, 48, 32}, {SAMSUNG,0x7,8,3}},
-        { 1, 0, BTF_IR,"5", {0}, {0,0, 48, 32}, {SAMSUNG,0x7,9,3}},
-        { 1, 0, BTF_IR,"6", {0}, {0,0, 48, 32}, {SAMSUNG,0x7,10,3}},
-        { 1, BF_REPEAT|BF_ARROW_DOWN,BTF_IR,  NULL, {0}, {0,0, 32, 32}, {SAMSUNG, 0x7,0xE6,3}},
-        { 2, 0, BTF_IR,"7", {0}, {0,0, 48, 32}, {SAMSUNG,0x7,11,3}},
-        { 2, 0, BTF_IR,"8", {0}, {0,0, 48, 32}, {SAMSUNG,0x7,12,3}},
-        { 2, 0, BTF_IR,"9", {0}, {0,0, 48, 32}, {SAMSUNG,0x7,13,3}},
-        { 2, BF_REPEAT|BF_ARROW_UP, BTF_IR, NULL, {0}, {0,0, 32, 32}, {SAMSUNG, 0x7,0x61,3}},
-        { 3, 0, BTF_IR,"H", {0}, {0,0, 48, 32}, {SAMSUNG,0x7,0x79,3}},
-        { 3, 0, BTF_IR,"0", {0}, {0,0, 48, 32}, {SAMSUNG,0x7,0x11,3}},
-        { 3, 0, BTF_IR,"<", {0}, {0,0, 48, 32}, {SAMSUNG,0x7,0x13,3}},
-        { 3, BF_REPEAT|BF_ARROW_DOWN, BTF_IR, NULL, {0}, {0,0, 32, 32}, {SAMSUNG, 0x7,11,3}},
+        { 0, 0, BTF_IR, "1", NULL, 0, {0}, {0,0, 48, 32}, {SAMSUNG,0x7,4, 3}},
+        { 0, 0, BTF_IR, "2", NULL, 0, {0}, {0,0, 48, 32}, {SAMSUNG,0x7,5,3}},
+        { 0, 0, BTF_IR, "3", NULL, 0, {0}, {0,0, 48, 32}, {SAMSUNG,0x7,6,3}},
+        { 0, BF_REPEAT|BF_ARROW_UP, BTF_IR, NULL, NULL, 0, {0}, {0,0, 32, 32}, {SAMSUNG, 0x7,7, 3}},
+        { 1, 0, BTF_IR,"4", NULL, 0, {0}, {0,0, 48, 32}, {SAMSUNG,0x7,8,3}},
+        { 1, 0, BTF_IR,"5", NULL, 0, {0}, {0,0, 48, 32}, {SAMSUNG,0x7,9,3}},
+        { 1, 0, BTF_IR,"6", NULL, 0, {0}, {0,0, 48, 32}, {SAMSUNG,0x7,10,3}},
+        { 1, BF_REPEAT|BF_ARROW_DOWN,BTF_IR,  NULL, NULL, 0, {0}, {0,0, 32, 32}, {SAMSUNG, 0x7,0xE6,3}},
+        { 2, 0, BTF_IR,"7", NULL, 0, {0}, {0,0, 48, 32}, {SAMSUNG,0x7,11,3}},
+        { 2, 0, BTF_IR,"8", NULL, 0, {0}, {0,0, 48, 32}, {SAMSUNG,0x7,12,3}},
+        { 2, 0, BTF_IR,"9", NULL, 0, {0}, {0,0, 48, 32}, {SAMSUNG,0x7,13,3}},
+        { 2, BF_REPEAT|BF_ARROW_UP, BTF_IR, NULL, NULL, 0, {0}, {0,0, 32, 32}, {SAMSUNG, 0x7,0x61,3}},
+        { 3, 0, BTF_IR,"H", NULL, 0, {0}, {0,0, 48, 32}, {SAMSUNG,0x7,0x79,3}},
+        { 3, 0, BTF_IR,"0", NULL, 0, {0}, {0,0, 48, 32}, {SAMSUNG,0x7,0x11,3}},
+        { 3, 0, BTF_IR,"<", NULL, 0, {0}, {0,0, 48, 32}, {SAMSUNG,0x7,0x13,3}},
+        { 3, BF_REPEAT|BF_ARROW_DOWN, BTF_IR, NULL, NULL, 0, {0}, {0,0, 32, 32}, {SAMSUNG, 0x7,11,3}},
         {0xFF}
       }
     },
@@ -273,7 +284,7 @@ Tile layout
       1,
       EX_NONE,
 #if defined(ROUND_DISPLAY) // round, use arc slider
-      {{BTF_PCVolume, 0, 90, 90},{BTF_None}},
+      {{BTF_PCVolume, 0, 90, 90, "Volume", &FreeSans7pt7b, TFT_CYAN},{BTF_None}},
 #else
       {{BTF_None},{BTF_None}},
 #endif
@@ -281,14 +292,14 @@ Tile layout
       0,
       NULL,
       {
-        { 0, BF_REPEAT|BF_ARROW_LEFT, BTF_PC_Media, NULL,  {0}, {0,0, 32, 32}, {3,0}},
-        { 0, 0, BTF_PC_Media,       "Play",  {0}, {0,0, 60, 32}, {0,0}},
-        { 0, BF_REPEAT|BF_ARROW_RIGHT, BTF_PC_Media, NULL,  {0}, {0,0, 32, 32}, {2,0}},
-        { 1, 0, BTF_PC_Media,        "STOP", {0}, {0,0, 60, 32}, {1,0}},
-        { 2, BF_SLIDER_H, BTF_PC_Media, "",  {0}, {0,0, 120, 32}, {1001,0}},
-        { 3, 0, BTF_PC_Media,        "Mute", {0}, {0,0, 60, 32}, {4,0}},
+        { 0, BF_REPEAT|BF_ARROW_LEFT, BTF_PC_Media, NULL,  NULL, 0, {0}, {0,0, 32, 32}, {3,0}},
+        { 0, 0, BTF_PC_Media,       "Play", NULL, 0, {0}, {0,0, 60, 32}, {0,0}},
+        { 0, BF_REPEAT|BF_ARROW_RIGHT, BTF_PC_Media, NULL, NULL, 0, {0}, {0,0, 32, 32}, {2,0}},
+        { 1, 0, BTF_PC_Media,        "STOP", NULL, 0, {0}, {0,0, 60, 32}, {1,0}},
+        { 2, BF_SLIDER_H, BTF_PC_Media, "", NULL, 0, {0}, {0,0, 120, 32}, {1001,0}},
+        { 3, 0, BTF_PC_Media,        "Mute", NULL, 0, {0}, {0,0, 60, 32}, {4,0}},
 #if !defined(ROUND_DISPLAY)
-        { 4, BF_SLIDER_V|BF_FIXED_POS, BTF_PCVolume, "",  {0}, {DISPLAY_WIDTH-20, 40, 20, DISPLAY_HEIGHT - 80} },
+        { 4, BF_SLIDER_V|BF_FIXED_POS, BTF_PCVolume, "Volume", &FreeSans7pt7b, TFT_CYAN, {0}, {DISPLAY_WIDTH-30, 40, 20, DISPLAY_HEIGHT - 80} },
 #endif
         {0xFF}
       }
@@ -299,7 +310,7 @@ Tile layout
       1,
       EX_SCROLL,
 #if defined(ROUND_DISPLAY)
-      {{BTF_Lights, SFL_REVERSE, 270, 90},{BTF_None}},
+      {{BTF_Lights, SFL_REVERSE, 270, 90, "Brightness", &FreeSans7pt7b, TFT_CYAN},{BTF_None}},
 #else
       {{BTF_None},{BTF_None}},
 #endif
@@ -308,7 +319,7 @@ Tile layout
       NULL,
       {
 #if !defined(ROUND_DISPLAY)
-        { 0, BF_SLIDER_V|BF_FIXED_POS, BTF_Lights, "",  {0}, {10, 40, 20, DISPLAY_HEIGHT - 80}},
+        { 0, BF_SLIDER_V|BF_FIXED_POS, BTF_Lights, "Brightness", &FreeSans7pt7b, TFT_CYAN, {0}, {10, 40, 20, DISPLAY_HEIGHT - 80}},
 #endif
         {0xFF}
       }
@@ -323,16 +334,16 @@ Tile layout
       0,
       NULL,
       {
-        { 0, BF_TEXT, 0, "Out:",  {0}, {0,0, 0, 32}},
-        { 0, BF_BORDER|BF_TEXT, BTF_Stat_OutTemp, "",  {0}, {0,0, 60, 32}, {1,0}},
-        { 0, BF_TEXT, 0, "",  {0}, {0,0, 32, 32}}, // spacer
-        { 1, BF_TEXT, 0, " In:",  {0}, {0,0, 38, 32}, {1,0}},
-        { 1, BF_BORDER|BF_TEXT, BTF_Stat_Temp, "",  {0}, {0,0, 60, 32}, {1,0}},
-        { 1, BF_REPEAT|BF_ARROW_UP, BTF_StatCmd, NULL, {0}, {0,0, 32, 32}, {0}},
-        { 2, BF_TEXT, 0, "Set:",  {0}, {0,0, 0, 32}, {1,0}},
-        { 2, BF_BORDER|BF_TEXT, BTF_Stat_SetTemp, "",  {0}, {0,0, 60, 32}, {1,0}},
-        { 2, BF_REPEAT|BF_ARROW_DOWN, BTF_StatCmd, NULL, {0}, {0,0, 32, 32}, {1}},
-        { 3, 0, BTF_Stat_Fan, "Fan", {0, 0}, {0,0, 0, 32}, {2}},
+        { 0, BF_TEXT, 0, "Out:", NULL, 0, {0}, {0,0, 0, 32}},
+        { 0, BF_BORDER|BF_TEXT, BTF_Stat_OutTemp, "",  NULL, 0, {0}, {0,0, 60, 32}, {1,0}},
+        { 0, BF_TEXT, 0, "", NULL, 0,  {0}, {0,0, 32, 32}}, // spacer
+        { 1, BF_TEXT, 0, " In:", NULL, 0, {0}, {0,0, 38, 32}, {1,0}},
+        { 1, BF_BORDER|BF_TEXT, BTF_Stat_Temp, "",  NULL, 0, {0}, {0,0, 60, 32}, {1,0}},
+        { 1, BF_REPEAT|BF_ARROW_UP, BTF_StatCmd, NULL, NULL, 0, {0}, {0,0, 32, 32}, {0}},
+        { 2, BF_TEXT, 0, "Set:", NULL, 0, {0}, {0,0, 0, 32}, {1,0}},
+        { 2, BF_BORDER|BF_TEXT, BTF_Stat_SetTemp, "", NULL, 0,  {0}, {0,0, 60, 32}, {1,0}},
+        { 2, BF_REPEAT|BF_ARROW_DOWN, BTF_StatCmd, NULL, NULL, 0, {0}, {0,0, 32, 32}, {1}},
+        { 3, 0, BTF_Stat_Fan, "Fan", NULL, 0, {0, 0}, {0,0, 0, 32}, {2}},
         {0xFF}
       }
     },
@@ -346,9 +357,9 @@ Tile layout
       0,
       NULL,
       {
-        { 0, BF_BORDER|BF_TEXT, BTF_GdoDoor, "",  {0}, {0,0, 98, 32}},
-        { 1, BF_BORDER|BF_TEXT, BTF_GdoCar, "",  {0}, {0,0, 98, 32}},
-        { 2, 0, BTF_GdoCmd, "Open", {0, 0}, {0,0, 98, 32}, {0}},
+        { 0, BF_BORDER|BF_TEXT, BTF_GdoDoor, "", NULL, 0,  {0}, {0,0, 98, 32}},
+        { 1, BF_BORDER|BF_TEXT, BTF_GdoCar, "", NULL, 0,  {0}, {0,0, 98, 32}},
+        { 2, 0, BTF_GdoCmd, "Open", NULL, 0, {0, 0}, {0,0, 98, 32}, {0}},
         {0xFF}
       }
     },
@@ -358,7 +369,7 @@ Tile layout
       3, // row 3
       EX_NONE,
 #if defined(ROUND_DISPLAY)
-      {{BTF_Brightness, SFL_REVERSE, 270, 90},{BTF_None}},
+      {{BTF_Brightness, SFL_REVERSE, 270, 90, "Brightness", &FreeSans7pt7b, TFT_CYAN},{BTF_None}},
 #else
       {{BTF_None},{BTF_None}},
 #endif
@@ -366,12 +377,12 @@ Tile layout
       0,
       NULL,
       {
-        { 0, 0, BTF_WIFI_ONOFF, "WiFi On",    {0},  {0,0, 112, 28}},
-        { 1, 0, BTF_BT_ONOFF, "Bluetooth On", {0},  {0,0, 112, 28}},
-        { 2, 0, BTF_Restart, "Restart", {0},  {0,0, 112, 28}},
-        { 2, BF_FIXED_POS, BTF_RSSI, "", {0}, {(DISPLAY_WIDTH/2 - 26/2), 180 + 26, 26, 26}},
+        { 0, 0, BTF_WIFI_ONOFF, "WiFi On",   NULL, 0,  {0},  {0,0, 112, 28}},
+        { 1, 0, BTF_BT_ONOFF, "Bluetooth On", NULL, 0, {0},  {0,0, 112, 28}},
+        { 2, 0, BTF_Restart, "Restart", NULL, 0, {0},  {0,0, 112, 28}},
+        { 2, BF_FIXED_POS, BTF_RSSI, "", NULL, 0, {0}, {(DISPLAY_WIDTH/2 - 26/2), 180 + 26, 26, 26}},
 #if !defined(ROUND_DISPLAY)
-        { 3, BF_SLIDER_V|BF_FIXED_POS, BTF_Brightness, "",  {0}, {10, 40, 20, DISPLAY_HEIGHT - 80}},
+        { 3, BF_SLIDER_V|BF_FIXED_POS, BTF_Brightness, "Brightness", &FreeSans7pt7b, TFT_CYAN, {0}, {10, 40, 20, DISPLAY_HEIGHT - 80}},
 #endif
         {0xFF}
       }
@@ -386,7 +397,7 @@ Tile layout
       0,
       NULL,
       {
-        { 0, BF_FIXED_POS, BTF_Clear, "Clear", {0}, {0, DISPLAY_HEIGHT-24, 180, 24} }, // force y
+        { 0, BF_FIXED_POS, BTF_Clear, "Clear", NULL, 0, {0}, {0, DISPLAY_HEIGHT-24, 180, 24} }, // force y
         {0xFF}
       }
     },
