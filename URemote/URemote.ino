@@ -25,7 +25,7 @@ SOFTWARE.
 //  ESP32: (2.0.14) ESP32S3 Dev Module, QIO, CPU Freq: 80MHz for lowest power (<60mA),
 //  Flash: 16MB
 //  Partition: 16MB (3MB APP/9.9 FATFS)
-// For 1.28"
+// For 1.28" round
 //  PSRAM: QSPI PSRAM
 //  In TFT_eSPI/User_Setup_Select.h use #include <User_Setups/Setup302_Waveshare_ESP32S3_GC9A01.h>
 // For 1.69"
@@ -38,7 +38,7 @@ SOFTWARE.
 #define OTA_ENABLE  //uncomment to enable Arduino IDE Over The Air update code (uses ~4K heap)
 #define SERVER_ENABLE // uncomment to enable server and WebSocket
 //#define BLE_ENABLE // uncomment for BLE keyboard (uses 510KB (16%) PROGMEN and >100K heap)
-#define CLIENT_ENABLE // uncomment for PC client WebSocket
+#define CLIENT_ENABLE // uncomment for PC WebSocket client
 #define IR_ENABLE // uncomment for IR
 
 #include <WiFi.h>
@@ -74,8 +74,8 @@ BleKeyboard bleKeyboard;
 #endif
 
 #ifdef CLIENT_ENABLE
-#include <WebSocketsClient.h>
-WebSocketsClient wsClient;
+#include "WebSocketClient.h"  //https://github.com/krohling/ArduinoWebsocketClient
+WebSocketClient WsClient;
 bool bWscConnected;
 void WscSend(String s);
 void startListener(void);
@@ -88,8 +88,8 @@ void startListener(void);
  #define IR_RECEIVE_PIN   15
  #define IR_SEND_PIN      16
 #elif (USER_SETUP_ID==303) // 240x320 2.8"
- #define IR_RECEIVE_PIN   43 // UART0
- #define IR_SEND_PIN      44
+ #define IR_RECEIVE_PIN   44 // UART0
+ #define IR_SEND_PIN      43
 #else
  #define IR_RECEIVE_PIN   44 // UART0  or 17,18
  #define IR_SEND_PIN      43
@@ -118,7 +118,7 @@ void startListener(void);
 #include "display.h"
 #include "Lights.h" // Uses ~3KB
 Lights lights;
-const char *hostName = "URemoteB"; // Device and OTA name
+const char *hostName = "URemote"; // Device and OTA name
 
 bool bConfigDone = false; // EspTouch done or creds set
 bool bStarted = false; // first start
@@ -130,6 +130,11 @@ bool bRXActive;
 Display display;
 eeMem ee;
 UdpTime udpTime;
+
+void WsSend(String s)
+{
+  ws.textAll(s);
+}
 
 void consolePrint(String s)
 {
@@ -153,7 +158,6 @@ void decodePrint(uint8_t proto, uint16_t addr, uint16_t cmd, uint32_t raw, uint8
 
   String s = js.Close();
   ws.textAll(s);
-  ets_printf(s.c_str());
 }
 #endif
 
@@ -199,9 +203,6 @@ void stopWiFi()
 #ifdef SERVER_ENABLE
   WsClientID = 0;
   WsPcClientID = 0;
-#ifdef CLIENT_ENABLE
-  wsClient.disconnect();
-#endif
 #endif
   
   WiFi.setSleep(true);
@@ -355,7 +356,10 @@ const char *jsonListCmd[] = {
   "restart",
   "GDODOOR",
   "GDOCAR",
-  "delf",
+  "setfs",
+  "cd",
+  "delf", // 20
+  "createdir",
   NULL
 };
 
@@ -426,26 +430,21 @@ void jsonCallback(int16_t iName, int iValue, char *psValue)
     case 17:
       display.m_bGdoCar = iValue;
       break;
-    case 18: // delf
-      media.deleteIFile(psValue);
+    case 18: // setfs
+      media.setFS(psValue);
+      ws.textAll(setupJson()); // update FS and disk free
+      break;
+    case 19: // cd
+      media.setPath(psValue);
+      break;
+    case 20: // delf
+      media.deleteFile(psValue);
       ws.textAll(setupJson()); // update disk free
       break;
-  }
-}
-
-void onUploadInternal(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final)
-{
-  if(!index)
-  {
-    String sFile = "/";
-    sFile += filename;
-    request->_tempFile = INTERNAL_FS.open(sFile, "w");
-  }
-  if(len)
-   request->_tempFile.write((byte*)data, len);
-  if(final)
-  {
-    request->_tempFile.close();
+    case 21: // createdir
+      media.createDir(psValue);
+      ws.textAll(setupJson()); // update disk free
+      break;
   }
 }
 
@@ -503,7 +502,12 @@ void startWiFi()
     {
       request->send_P( 200, "text/html", page1);
     });
-  
+
+    server.on ( "/fm.html", HTTP_GET | HTTP_POST, [](AsyncWebServerRequest * request)
+    {
+      request->send_P( 200, "text/html", fileman);
+    });
+
     server.onNotFound([](AsyncWebServerRequest * request) {
       request->send(404);
     });
@@ -520,15 +524,26 @@ void startWiFi()
       AsyncWebServerResponse *response = request->beginResponse_P(200, "image/png", delbtn_png, sizeof(delbtn_png));
       request->send(response);
     });
-    server.on ( "/upload_internal", HTTP_POST, [](AsyncWebServerRequest * request)
+    server.on ( "/upload", HTTP_POST, [](AsyncWebServerRequest * request)
     {
       request->send( 200);
       ws.textAll(setupJson()); // update free space
-    }, onUploadInternal);
+    },
+    [](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final)
+     {
+      if(!index)
+        request->_tempFile = media.createFile(filename);
+      if(len)
+       request->_tempFile.write((byte*)data, len);
+      if(final)
+        request->_tempFile.close();
+     }
+    );
+
+    server.serveStatic("/", INTERNAL_FS, "/");
     server.begin();
     jsonParse.setList(jsonListCmd);
   }
-  server.serveStatic("/fs", INTERNAL_FS, "/");
 #endif
 }
 
@@ -537,10 +552,6 @@ void serviceWiFi()
 #ifdef OTA_ENABLE
 // Handle OTA server.
   ArduinoOTA.handle();
-#endif
-
-#ifdef CLIENT_ENABLE
-  wsClient.loop();
 #endif
 }
 
@@ -565,12 +576,13 @@ void sendState()
 
 String setupJson()
 {
-  jsonString js("setup");
+  jsonString js("settings");
   js.Var("tz", ee.tz);
   js.Var("st", ee.sleepTime);
   js.Var("ss", ee.ssTime);
-  uint32_t freeK = (INTERNAL_FS.totalBytes() - INTERNAL_FS.usedBytes()) / 1024;
-  js.Var("freek",  freeK);
+  js.Var("diskfree",  media.freeSpace() );
+  js.Var("sdavail",  media.SDCardAvailable() );
+  js.Var("currfs", media.currFS());
   return js.Close();
 }
 
@@ -582,9 +594,9 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
     case WS_EVT_CONNECT:      //client connected
       client->text(setupJson());
       client->text(dataJson());
-      client->text( media.internalFileListJson(INTERNAL_FS, "/") );
       display.m_nWsConnected++;
       WsClientID = client->id();
+      media.setPath("/"); // trigger file list send
       break;
     case WS_EVT_DISCONNECT:    //client disconnected
       if (display.m_nWsConnected)
@@ -613,9 +625,9 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
 
 void setup()
 {
-  delay(1000);
-  ets_printf("\nStarting\n"); // print over USB
-  ets_printf("Free: %ld\n", heap_caps_get_free_size(MALLOC_CAP_8BIT) );
+//  delay(1000);
+//  ets_printf("\nStarting\n"); // print over USB (if using UART pins for IR, don't print after it starts)
+//  ets_printf("Free: %ld\n", heap_caps_get_free_size(MALLOC_CAP_8BIT) );
 
   ee.init();
   display.init();
@@ -647,6 +659,7 @@ void loop()
   static int8_t lastHour;
 
   display.service();  // check for touch, etc.
+  media.service();
 
   if(WiFi.status() == WL_CONNECTED)
     if(udpTime.check(ee.tz))
@@ -693,6 +706,14 @@ void loop()
   {
     sec_save = second();
 
+/*
+   if(sec_save == 0)
+   {
+     IrReceiver.begin(IR_RECEIVE_PIN);
+     bRXActive = true;
+     ets_printf("RX active\r\n");
+   }
+*/
     if(secondsWiFi()) // once per second stuff, returns true once on connect
       udpTime.start();
 
@@ -711,9 +732,6 @@ void loop()
         ee.update();
       }
     }
-//    String s = "ADC ";
-//    s += display.m_vadc;
-//    ws.textAll( s);
 #ifdef SERVER_ENABLE
     if (--ssCnt == 0) // keepalive
       sendState();
@@ -723,7 +741,6 @@ void loop()
   delay(1);
 }
 
-
 // remote WebSocket for sending all commands to PC and recieving states
 // Thermostate and GDO go through this as well for speed
 
@@ -732,30 +749,26 @@ void loop()
 void WscSend(String s) 
 {
   if(bWscConnected)
-    wsClient.sendTXT(s);
+    WsClient.send(s);
 }
 
-static void clientEventHandler(WStype_t type, uint8_t * payload, size_t length)
+void webSocketEventHandler(uint8_t event, char *data, uint16_t length)
 {
-  switch(type)
+  switch(event)
   {
-    case WStype_CONNECTED:
+    case WEBSOCKET_EVENT_ERROR:
+      break;
+    case WEBSOCKET_EVENT_CONNECTED:
       bWscConnected = true;
 //      display.notify("PC connected"); // helps see things connecting
       break;
-    case WStype_DISCONNECTED:
+    case WEBSOCKET_EVENT_DISCONNECTED:
       bWscConnected = false;
       break;
-    case WStype_TEXT:
-      jsonParse.process((char*)payload);
+    case WEBSOCKET_EVENT_DATA_TEXT:
+      jsonParse.process(data);
       break;
-    case WStype_BIN:
-      break;
-    case WStype_ERROR:      
-    case WStype_FRAGMENT_TEXT_START:
-    case WStype_FRAGMENT_BIN_START:
-    case WStype_FRAGMENT:
-    case WStype_FRAGMENT_FIN:
+    case WEBSOCKET_EVENT_DATA_BINARY:
       break;
   }
 }
@@ -763,11 +776,7 @@ static void clientEventHandler(WStype_t type, uint8_t * payload, size_t length)
 void startListener()
 {
   IPAddress ip(ee.hostIp);
-  static char szHost[32];
-  wsClient.begin(ip.toString().c_str(), ee.hostPort, "/ws");
-
-  wsClient.onEvent(clientEventHandler);
-  // try ever 5000 again if connection has failed
-  wsClient.setReconnectInterval(5000);
+  WsClient.connect((char *)ip.toString().c_str(), "/ws", ee.hostPort);
+  WsClient.setCallback(webSocketEventHandler);
 }
 #endif
