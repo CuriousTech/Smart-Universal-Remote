@@ -18,7 +18,7 @@ public:
   void init(void);
   bool check(void);
   bool update(void);
-  uint16_t getSum(void);
+  bool verify(bool bComp);
   uint16_t Fletcher16( uint8_t* data, int count);
 
   uint16_t size = EESIZE;            // if size changes, use defaults
