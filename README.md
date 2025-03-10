@@ -4,8 +4,7 @@ Smart Universal Remote using [Waveshare ESP32-S3-Touch-LCD-1.28](https://www.wav
 This is a work in progress and not all code is complete. That said, it functionally works.  
   
 ![uremote](https://curioustech.net/images/uremote.jpg)  
-![uremote2](https://curioustech.net/images/uremote2.jpg)  
-![uremote2](https://curioustech.net/images/wave.gif)  
+![uremote2](https://curioustech.net/images/ur.gif)  
   
 This is a tiny smart universal remote with WiFi, IR, capacitive touchscreen, wireless charging (and possibly Bluetooth) all for a very low cost.  
   
