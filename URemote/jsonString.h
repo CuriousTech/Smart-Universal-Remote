@@ -156,6 +156,32 @@ public:
     m_cnt++;
   }
 
+  void Array(const char *key, FileEntry entry[], bool bAddParent)
+  {
+    if(m_cnt) s += ",";
+    s += "\"";
+    s += key;
+    s += "\":[";
+
+    if(bAddParent)
+      s += "[\"..\",0,1,0],";
+    for(int i = 0; entry[i].Name[0]; i++)
+    {
+      if(i) s += ",";
+      s += "[\"";
+      s += entry[i].Name;
+      s += "\",";
+      s += entry[i].Size;
+      s += ",";
+      s += entry[i].bDir;
+      s += ",";
+      s += entry[i].Date;
+      s += "]";
+    }
+    s += "]";
+    m_cnt++;
+  }
+
 protected:
   String s;
   int m_cnt;
