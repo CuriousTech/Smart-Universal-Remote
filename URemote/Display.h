@@ -5,6 +5,14 @@
 #include <TFT_eSPI.h> // TFT_eSPI library from library manager?
 #include "fonts.h"
 
+#if (USER_SETUP_ID==303) // 240x320 2.8"
+#define USE_SDCARD
+#endif
+
+#if (USER_SETUP_ID==302) // 240x240
+#define ROUND_DISPLAY
+#endif
+
 // from 5-6-5 to 16 bit value (max 31, 63, 31)
 #define rgb16(r,g,b) ( ((uint16_t)r << 11) | ((uint16_t)g << 5) | (uint16_t)b )
 
@@ -81,6 +89,7 @@ enum Button_Function
   BTF_GdoCmd,
   BTF_Restart,
   BTF_TrackBtn,
+  BTF_PowerOff,
 };
 
 // Button flags
@@ -380,10 +389,11 @@ Tile layout
         { 0, 0, BTF_WIFI_ONOFF, "WiFi On",   NULL, 0,  {0},  {0,0, 112, 28}},
         { 1, 0, BTF_BT_ONOFF, "Bluetooth On", NULL, 0, {0},  {0,0, 112, 28}},
         { 2, 0, BTF_Restart, "Restart", NULL, 0, {0},  {0,0, 112, 28}},
-        { 2, BF_FIXED_POS, BTF_RSSI, "", NULL, 0, {0}, {(DISPLAY_WIDTH/2 - 26/2), 180 + 26, 26, 26}},
 #if !defined(ROUND_DISPLAY)
-        { 3, BF_SLIDER_V|BF_FIXED_POS, BTF_Brightness, "Brightness", &FreeSans7pt7b, TFT_CYAN, {0}, {10, 40, 20, DISPLAY_HEIGHT - 80}},
+        { 3, 0, BTF_PowerOff, "Power Off", NULL, 0, {0},  {0,0, 112, 28}},
+        { 4, BF_SLIDER_V|BF_FIXED_POS, BTF_Brightness, "Brightness", &FreeSans7pt7b, TFT_CYAN, {0}, {10, 40, 20, DISPLAY_HEIGHT - 80}},
 #endif
+        { 5, BF_FIXED_POS, BTF_RSSI, "", NULL, 0, {0}, {DISPLAY_WIDTH - 26, DISPLAY_HEIGHT - 26, 26, 26}},
         {0xFF}
       }
     },
