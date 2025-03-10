@@ -25,7 +25,7 @@ void Lights::init()
   }
 }
 
-bool Lights::setSwitch(int8_t nSwitch, bool bPwr, uint8_t nLevel)
+bool Lights::setSwitch(int8_t nSwitch, bool bPwr, uint16_t nLevel)
 {
   if(nSwitch != -1) // -1 = last used (dimmer)
     m_nSwitch = nSwitch - 1; // ID starts at 1
@@ -41,13 +41,13 @@ bool Lights::setSwitch(int8_t nSwitch, bool bPwr, uint8_t nLevel)
   uri.Param("pwr0", bPwr ? 1:0);
   if(nLevel)
   {
-    uri.Param("level", nLevel << 1); // dimmers are 1-200
+    uri.Param("level", nLevel * 10); // dimmers are 1-1000
   }
   if(send(ip, 80, uri.string().c_str()) )
   {
     m_bOn[m_nSwitch][0] = bPwr;
     if(nLevel)
-      m_nLevel[m_nSwitch] = nLevel; // valid level is 1-200
+      m_nLevel[m_nSwitch] = nLevel; // valid level is 1-1000
     return true;
   }
   return false;
