@@ -209,7 +209,7 @@ void ScreenSavers::Starfield(bool bInit)
 
   for(uint8_t i = 0; i < STARS; i++)
   {
-    tft.drawPixel((uint8_t)star[i].x, (uint8_t)star[i].y, TFT_BLACK );
+    tft.drawPixel((uint16_t)star[i].x, (uint16_t)star[i].y, TFT_BLACK );
     star[i].x += star[i].dx;
     star[i].y += star[i].dy;
     if(star[i].z < 255) star[i].z++;
@@ -218,7 +218,7 @@ void ScreenSavers::Starfield(bool bInit)
     {
       resetStar(star[i]);
     }
-    tft.drawPixel((uint8_t)star[i].x, (uint8_t)star[i].y, tft.color565(star[i].z, star[i].z, star[i].z) );
+    tft.drawPixel((uint16_t)star[i].x, (uint16_t)star[i].y, tft.color565(star[i].z, star[i].z, star[i].z) );
   }
 }
 
