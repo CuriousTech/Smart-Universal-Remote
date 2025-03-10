@@ -154,7 +154,6 @@ void Display::exitScreensaver()
     m_intTriggered = false; // causes an interrupt
   }
   m_brightness = ee.brightLevel[1]; // increase brightness for any touch
-  ets_printf("exitSS\n");
 }
 
 void Display::service(void)
@@ -1202,6 +1201,12 @@ void Display::buttonCmd(Button *pBtn, bool bRepeat)
 
     case BTF_Restart:
       ESP.restart();
+      break;
+
+    case BTF_PowerOff:
+#ifdef PWR_CTRL // Power stay-on thing
+      digitalWrite(PWR_CTRL, LOW);
+#endif
       break;
 
     case BTF_BLE:
