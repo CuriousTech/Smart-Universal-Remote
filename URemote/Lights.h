@@ -23,7 +23,7 @@ public:
   Lights(void);
   void init(void);
   void start(void);
-  bool setSwitch(int8_t nSwitch, bool bPwr, uint8_t nLevel);
+  bool setSwitch(int8_t nSwitch, bool bPwr, uint16_t nLevel);
   bool send(IPAddress serverIP, uint16_t port, const char *pURI);
   int checkStatus();
 
@@ -44,7 +44,7 @@ private:
   bool m_bQuery;
   int m_bufIdx;
   bool m_bOn[EE_LIGHT_CNT][2];
-  uint8_t m_nLevel[EE_LIGHT_CNT];
+  uint16_t m_nLevel[EE_LIGHT_CNT];
   uint8_t m_nSwitch;
 };
 
