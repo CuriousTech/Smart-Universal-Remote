@@ -930,7 +930,8 @@ void Display::drawTile(int8_t nTile, bool bFirst, int16_t x, int16_t y)
       switch( pTile.slider[j].nFunc )
       {
         case BTF_Brightness:
-          pTile.slider[j].nValue = ee.brightLevel[1] * 100 / 255;
+          if(bFirst)
+            pTile.slider[j].nValue = ee.brightLevel[1] * 100 / 255;
           break;
       }
       drawArcSlider( pTile.slider[j], pTile.slider[j].nValue, x, y );
@@ -986,7 +987,6 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed, int16_t x, in
       }
       break;
     case BTF_BattPerc:
-
       // 1550 = 3.74 = full with normal draw  (0.5V drop on 1200mAh!)
       // 1283 = 3.1V
       {
@@ -1379,8 +1379,21 @@ void Display::drawArcSlider(ArcSlider& slider, uint8_t newValue, int16_t x, int1
   if(angle > 360) angle -= 360;
 
   if(slider.pszText)
-    drawArcText(slider.pszText, x, y, slider.pFont, slider.textColor, angle, 90);
-
+  {
+    String s = slider.pszText;
+    switch(slider.nFunc)
+    {
+      case BTF_PCVolume:
+        s = " Volume  ";
+        s += slider.nValue;
+        break;
+      case BTF_Brightness:
+        s = " Brightness  ";
+        s += slider.nValue;
+        break;
+    }
+    drawArcText(s, x, y, slider.pFont, slider.textColor, slider.nPos, 90);
+  }
   cspoint(ax, ay, DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, angle, dist);
   sprite.drawSpot(x+ax, y+ay, 10, TFT_YELLOW);
 }
@@ -1516,7 +1529,7 @@ void Display::drawText(String s, int16_t x, int16_t y, int16_t angle, uint16_t c
 //  sprite.setPivot(0, 0);
 }
 
-void Display::drawArcText(String s, int16_t x, int16_t y, const GFXfont *pFont, uint16_t color, int16_t angle, int8_t distance)
+void Display::drawArcText(String s, int16_t x, int16_t y, const GFXfont *pFont, uint16_t color, float angle, int8_t distance)
 {
   TFT_eSprite textSprite = TFT_eSprite(&tft);
 
@@ -1528,15 +1541,11 @@ void Display::drawArcText(String s, int16_t x, int16_t y, const GFXfont *pFont, 
   textSprite.setTextColor(color ? color : TFT_WHITE, bgColor );
   textSprite.setFreeFont(pFont ? pFont : &FreeSans9pt7b);
 
-  int16_t w = textSprite.textWidth("A") + 1;
-  int16_t h = textSprite.fontHeight() + 3;
-  textSprite.createSprite(w, h);
+  textSprite.createSprite(textSprite.textWidth("A") + 1, textSprite.fontHeight() + 3);
 
   uint8_t cnt = s.length();
-  angle -= textSprite.textWidth(s) / 2;
+  angle -= textSprite.textWidth(s) * distance / 100 / 2; // not really accurate
 
-  const float fx = DISPLAY_WIDTH/2; // center
-  const float fy = DISPLAY_HEIGHT/2;
   int16_t x1, y1;
   String chStr;
 
@@ -1544,13 +1553,14 @@ void Display::drawArcText(String s, int16_t x, int16_t y, const GFXfont *pFont, 
   {
     chStr = s.charAt(i);
 
-    cspoint(x1, y1, fx, fy, angle, distance);
+    cspoint(x1, y1, DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, angle, distance);
 
-    textSprite.fillSprite( bgColor );
+    textSprite.fillSprite( TFT_TRANSPARENT );
     textSprite.drawString(chStr, 0, 0);
     sprite.setPivot(x+x1, y+y1);
-    textSprite.pushRotated(&sprite, angle);
-    angle += textSprite.textWidth( chStr );
+    textSprite.pushRotated(&sprite, angle, TFT_TRANSPARENT);
+    angle += textSprite.textWidth( chStr ) * distance / 100;
+    if(angle >= 360) angle -= 360;
   }
   sprite.setPivot(0, 0);
 }
