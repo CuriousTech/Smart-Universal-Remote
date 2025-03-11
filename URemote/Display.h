@@ -196,7 +196,7 @@ private:
   void drawClock(int16_t x, int16_t y);
   bool arcSliderHit(ArcSlider& slider, uint8_t& value);
   void drawText(String s, int16_t x, int16_t y, int16_t angle, uint16_t cFg, uint16_t cBg, const GFXfont *pFont );
-  void drawArcText(String s, int16_t x, int16_t y, const GFXfont *pFont, uint16_t color, int16_t angle, int8_t distance);
+  void drawArcText(String s, int16_t x, int16_t y, const GFXfont *pFont, uint16_t color, float angle, int8_t distance);
   void cspoint(int16_t &x2, int16_t &y2, int16_t x, int16_t y, float angle, float size);
 
   void startSleep(void);
@@ -232,7 +232,7 @@ Tile layout
         { 0, BF_FIXED_POS|BF_TEXT, BTF_Date,  "Jan 01", NULL, 0, {0}, {DISPLAY_WIDTH/2-40, DISPLAY_HEIGHT-DISPLAY_HEIGHT/3, 80, 32} },
         { 0, BF_FIXED_POS|BF_TEXT, BTF_DOW,   "Sun", NULL, 0, {0}, {170, DISPLAY_HEIGHT/2 - 15, 40, 32} },
         { 0, BF_FIXED_POS|BF_TEXT, BTF_Volts, "4.20", NULL, 0, {0}, {28, DISPLAY_HEIGHT/2 - 15, 50, 32} },
-#if defined(ROUND_DISPLAY) // round, use arc slider
+#if defined(ROUND_DISPLAY)
         { 0, BF_FIXED_POS, BTF_RSSI, "", NULL, 0, {0}, {DISPLAY_WIDTH/2 - 26/2, DISPLAY_HEIGHT - 35, 26, 26}},
 #else
         { 0, BF_FIXED_POS, BTF_RSSI, "", NULL, 0, {0}, {4, DISPLAY_HEIGHT - 35, 26, 26}}, // bottom left corner
@@ -389,11 +389,13 @@ Tile layout
         { 0, 0, BTF_WIFI_ONOFF, "WiFi On",   NULL, 0,  {0},  {0,0, 112, 28}},
         { 1, 0, BTF_BT_ONOFF, "Bluetooth On", NULL, 0, {0},  {0,0, 112, 28}},
         { 2, 0, BTF_Restart, "Restart", NULL, 0, {0},  {0,0, 112, 28}},
-#if !defined(ROUND_DISPLAY)
+#if defined(ROUND_DISPLAY)
+        { 3, BF_FIXED_POS, BTF_RSSI, "", NULL, 0, {0}, {DISPLAY_WIDTH/2 - 26/2, DISPLAY_HEIGHT - 35, 26, 26}},
+#else
         { 3, 0, BTF_PowerOff, "Power Off", NULL, 0, {0},  {0,0, 112, 28}},
         { 4, BF_SLIDER_V|BF_FIXED_POS, BTF_Brightness, "Brightness", &FreeSans7pt7b, TFT_CYAN, {0}, {10, 40, 20, DISPLAY_HEIGHT - 80}},
-#endif
         { 5, BF_FIXED_POS, BTF_RSSI, "", NULL, 0, {0}, {DISPLAY_WIDTH - 26, DISPLAY_HEIGHT - 26, 26, 26}},
+#endif
         {0xFF}
       }
     },
