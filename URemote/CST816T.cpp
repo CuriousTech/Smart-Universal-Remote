@@ -44,8 +44,8 @@ void CST816T::read_touch()
 //  gestureID = data_raw[0]; // reading only 0
   event = data_raw[2] >> 6;
   down = data_raw[1];
-  x = data_raw[3]; // just need 0-240
-  y = data_raw[5];
+  x = ((data_raw[2]&0xF) << 8) | data_raw[3];
+  y = ((data_raw[4]&0xF) << 8) | data_raw[5];
 }
 
 void IRAM_ATTR CST816T::handleISR(void)
@@ -70,7 +70,7 @@ void CST816T::begin(int interrupt)
   delay(50);
 
   i2c_read(REG_CHIP_ID, versionInfo, 3); // (0xB5 = CST816T)
-  ets_printf("CST816 Chip ID = 0x%x\n", versionInfo[0]);
+  // ets_printf("CST816 Chip ID = 0x%x\n", versionInfo[0]);
 
   attachInterrupt(_irq, std::bind(&CST816T::handleISR, this), interrupt);
 
