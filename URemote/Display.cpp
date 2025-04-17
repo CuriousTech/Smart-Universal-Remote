@@ -74,6 +74,21 @@ extern void consolePrint(String s); // for browser debug
  CST816T touch(I2C_SDA, I2C_SCL, TP_RST, TP_INT);
 #endif
 
+#if (USER_SETUP_ID==304) // 240x320 2"
+ #define I2C_SDA  48
+ #define I2C_SCL  47
+ #define TP_SDA   48
+ #define TP_SCL   47
+ #define IMU_INT   3 // INT1
+ #define TP_RST   -1
+ #define TP_INT    GPIO_NUM_46 // normally high
+ #define TFT_BL    1
+ #define BATTV     5
+ 
+ #define DISPLAY_HEIGHT 320
+ CST816T touch(TP_SDA, TP_SCL, TP_RST, TP_INT);
+#endif
+
 const int16_t bgColor = TFT_BLACK;
 
 QMI8658 qmi;
