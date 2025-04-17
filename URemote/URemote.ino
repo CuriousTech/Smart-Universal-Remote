@@ -29,11 +29,14 @@ SOFTWARE.
 //  PSRAM: QSPI PSRAM
 //  In TFT_eSPI/User_Setup_Select.h use #include <User_Setups/Setup302_Waveshare_ESP32S3_GC9A01.h>
 // For 1.69"
-//  PSRAM: QPI PSRAM
-//    In TFT_eSPI/User_Setup_Select.h use #include <User_Setups/Setup203_ST7789.h> (custom, included in repo)
+//  PSRAM: OPI PSRAM
+//  In TFT_eSPI/User_Setup_Select.h use #include <User_Setups/Setup203_ST7789.h> (custom, included in repo)
 // For 2.8"
-//  PSRAM: QPI PSRAM
+//  PSRAM: OPI PSRAM
 //  In TFT_eSPI/User_Setup_Select.h use #include <User_Setups/Setup303_Waveshare_ESP32S3_ST7789.h> (custom, included in repo)
+// For 2"
+//  PSRAM: OPI PSRAM
+//  In TFT_eSPI/User_Setup_Select.h use #include <User_Setups/Setup304_Waveshare__2inch_ESP32S3_ST7789.h> (custom, included in repo)
 
 #define OTA_ENABLE  //uncomment to enable Arduino IDE Over The Air update code (uses ~4K heap)
 #define SERVER_ENABLE // uncomment to enable server and WebSocket
@@ -87,11 +90,8 @@ void startListener(void);
 #if (USER_SETUP_ID==302) // 240x240
  #define IR_RECEIVE_PIN   15
  #define IR_SEND_PIN      16
-#elif (USER_SETUP_ID==303) // 240x320 2.8"
- #define IR_RECEIVE_PIN   44 // UART0
- #define IR_SEND_PIN      43
 #else
- #define IR_RECEIVE_PIN   44 // UART0  or 17,18
+ #define IR_RECEIVE_PIN   44 // UART0
  #define IR_SEND_PIN      43
 #endif
 
@@ -204,9 +204,10 @@ void stopWiFi()
   WsClientID = 0;
   WsPcClientID = 0;
 #endif
-  
+
   WiFi.setSleep(true);
   bRestarted = false;
+  Serial.println("wifi stopped");
 }
 
 const char *szWiFiStat[] = {
@@ -452,7 +453,7 @@ void jsonCallback(int16_t iName, int iValue, char *psValue)
 
 void startWiFi()
 {
-  // ets_printf("startWiFi\r\n");
+  Serial.println("startWiFi\r\n");
   if(WiFi.status() == WL_CONNECTED)
     return;
 
@@ -460,6 +461,7 @@ void startWiFi()
 
   WiFi.hostname(hostName);
   WiFi.mode(WIFI_STA);
+  Serial.println("startWiFi2\r\n");
 
   if ( ee.szSSID[0] )
   {
