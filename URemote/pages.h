@@ -263,9 +263,9 @@ body{width:470px;display:block;margin-left:auto;margin-right:auto;font-family: A
 <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.6.1/jquery.min.js" type="text/javascript" charset="utf-8"></script>
 <script type="text/javascript">
 a=document.all
-path=''
+path='/'
 idx=0
-//var myToken=localStorage.getItem('myStoredText1')
+var myToken=localStorage.getItem('myStoredText1')
 $(document).ready(function(){
   openSocket()
 })
@@ -282,12 +282,17 @@ function openSocket(){
   }
   else if(d.cmd=='settings')
   {
-    a.free.innerHTML=d.currfs+': '+(d.diskfree/1024)+' KB Free'
+    if(d.diskfree>1024*1024)
+      a.free.innerHTML=d.currfs+': '+(d.diskfree/1024/1024).toFixed(1)+' MB Free'
+    else if(d.diskfree>10240)
+      a.free.innerHTML=d.currfs+': '+(d.diskfree/1024).toFixed()+' KB Free'
+    else
+      a.free.innerHTML=d.currfs+': '+d.diskfree+' B Free'
     if(d.sdavail) a.sdcard.disabled=false
   }
   else if(d.cmd=='files')
   {
-    a.path.innerHTML='CD '+path
+    a.path.innerHTML=path
     d.list.sort(function(a1, b1) {
       n=a1[0].toLowerCase().localeCompare(b1[0].toLowerCase())
       if(a1[2]) n-=10
@@ -307,8 +312,7 @@ function openSocket(){
 
 function setVar(varName, value)
 {
-// ws.send('{"key":"'+myToken+'","'+varName+'":'+value+'}')
- ws.send('{"'+varName+'":'+value+'}')
+ ws.send('{"key":"'+myToken+'","'+varName+'":'+value+'}')
 }
 
 function AddFile(item)
@@ -363,10 +367,10 @@ function cd(p)
     pathParts.pop()
     path=pathParts.join('/')
   }else{
-    if(path.length) path+='/'
+    if(path.length>1) path+='/'
     path+=p
   }
-  setVar('cd', '/'+path)
+  setVar('cd', path)
 }
 
 function delfile(idx,name)
@@ -378,10 +382,10 @@ function delfile(idx,name)
 
 function fullName(name)
 {
-  if(path) name='/'+path+'/'+name
-  return '/'+name
+  if(path.length>1) return path+'/'+name
+  else return '/'+name
 }
-function download(name) {
+function download(name){
   const b = document.createElement('a')
   b.href=encodeURIComponent(fullName(name))
   b.download = name
@@ -417,7 +421,7 @@ input{
 </tr>
 <tr><td>
 <p align="left" id="free">Internal: 0K Free</p>
-<p align="left" id="path">CD </p>
+<p align="left" id="path"></p>
 </td></tr>
 <tr>
 <td>
