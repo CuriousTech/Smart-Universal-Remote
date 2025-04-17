@@ -30,7 +30,7 @@ void Media::service()
   if(m_bDirty)
   {
     m_bDirty = false;
-    if(Path = SD_MMC.open(m_sdPath))
+    if(Path = EXTERNAL_FS.open(m_sdPath))
     {
       memset(SDList, 0, sizeof(SDList));
       file = Path.openNextFile();
@@ -69,23 +69,26 @@ void Media::init()
   INTERNAL_FS.begin(true);
 
 #ifdef USE_SDCARD
+ #if (USER_SETUP_ID==303) // 240x320 2.8"
   pinMode(SD_D3_PIN, OUTPUT);
-
   SD_MMC.setPins(SD_CLK_PIN, SD_CMD_PIN, SD_D0_PIN,-1,-1,-1);
-
   digitalWrite(SD_D3_PIN, HIGH); //enable
+  if (!SD_MMC.begin("/sdcard", true, true) )
+    return;
+ #elif (USER_SETUP_ID==304) // 240x320 2"
+  SPI.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
+  if (!SD.begin(SD_CS))
+    return;
+ #endif
 
-  if (SD_MMC.begin("/sdcard", true, true) )
-  {
-    uint8_t cardType = SD_MMC.cardType();
+  uint8_t cardType = EXTERNAL_FS.cardType();
 
-    if(cardType == CARD_NONE || cardType == CARD_UNKNOWN)
-      return;
+  if(cardType == CARD_NONE || cardType == CARD_UNKNOWN)
+    return;
 
-    m_bCardIn = true;
-    strcpy(m_sdPath, "/"); // start with root
-    setDirty();
-  }
+  m_bCardIn = true;
+  strcpy(m_sdPath, "/"); // start with root
+  setDirty();
 #endif
 }
 
@@ -119,7 +122,7 @@ uint32_t Media::freeSpace()
   {
 #ifdef USE_SDCARD
     if(m_bCardIn)
-      nFree = SD_MMC.totalBytes() - SD_MMC.usedBytes();
+      nFree = EXTERNAL_FS.totalBytes() - EXTERNAL_FS.usedBytes();
 #endif
   }
   else
@@ -189,7 +192,7 @@ void Media::deleteFile(char *pszFilename)
 #ifdef USE_SDCARD
     if(!m_bCardIn)
       return;
-    SD_MMC.remove(pszFilename);
+    EXTERNAL_FS.remove(pszFilename);
     m_bDirty = true;
 #endif
   }
@@ -203,7 +206,7 @@ File Media::createFile(String sFilename)
 {
 #ifdef USE_SDCARD
   if(m_bSDActive)
-    return SD_MMC.open(sFilename, "w");
+    return EXTERNAL_FS.open(sFilename, "w");
 #endif
   return INTERNAL_FS.open(sFilename, "w");
 }
@@ -213,8 +216,8 @@ void Media::createDir(char *pszName)
   if(m_bSDActive)
   {
 #ifdef USE_SDCARD
-   if( !SD_MMC.exists(pszName) )
-    SD_MMC.mkdir(pszName);
+   if( !EXTERNAL_FS.exists(pszName) )
+    EXTERNAL_FS.mkdir(pszName);
 #endif
   }
   else
@@ -289,11 +292,11 @@ void Media::Play(const char* directory, const char* fileName)
 
   if(m_bCardIn)
   {
-    if ( SD_MMC.exists(filePath))
+    if ( EXTERNAL_FS.exists(filePath))
     {
       audio.pauseResume();
       vTaskDelay(pdMS_TO_TICKS(100));
-      if( !audio.connecttoFS(SD_MMC,(char*)filePath) )
+      if( !audio.connecttoFS(EXTERNAL_FS,(char*)filePath) )
       {
   //      ets_printf("Music Read Failed\r\n");
         return;
