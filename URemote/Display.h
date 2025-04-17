@@ -5,10 +5,6 @@
 #include <TFT_eSPI.h> // TFT_eSPI library from library manager?
 #include "fonts.h"
 
-#if (USER_SETUP_ID==303) // 240x320 2.8"
-#define USE_SDCARD
-#endif
-
 #if (USER_SETUP_ID==302) // 240x240
 #define ROUND_DISPLAY
 #endif
