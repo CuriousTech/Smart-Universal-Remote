@@ -1,7 +1,9 @@
-# Smart-Universal-Remote
-Smart Universal Remote using [Waveshare ESP32-S3-Touch-LCD-1.28](https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-1.28) or [Waveshare ESP32-S3-Touch-LCD-1.69](https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-1.69) or [WaveShare-ESP32-S3-Touch-LCD-2.8](https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-2.8)   
-  
-This is a work in progress and not all code is complete. That said, it functionally works.  
+# Smart-Universal-Remote  
+Smart Universal Remote using one of these:  
+[Waveshare ESP32-S3-Touch-LCD-1.28](https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-1.28)  
+[Waveshare ESP32-S3-Touch-LCD-1.69](https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-1.69)  
+[WaveShare-ESP32-S3-Touch-LCD-2.8](https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-2.8)  
+[WaveShare-ESP32-S3-Touch-LCD-2inch](https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-2)  
   
 ![uremote](https://curioustech.net/images/uremote.jpg)  
 ![uremote2](https://curioustech.net/images/ur.gif)  
@@ -20,8 +22,7 @@ Parts list:
 
 [eBay:battery](https://www.ebay.com/itm/174781170731?var=473957762104) Select 1.25mm plug. This is probably a decent size. Be careful with the polarity. It was correct on mine. They sell a 1500mAh that's just a little thicker, but I may add a keypad that will use the extra space.   
 
-[TinkerCAD Case Model](https://www.tinkercad.com/things/j1XckJlfVuT-waveshare-esp32-s3-touch-128-remote-case) For editing the 3D print model.  The 1.69" model is here as well.  
-[TinkerCad 2.8"](https://www.tinkercad.com/things/c5yPt2mGT0k-waveshare-esp32-s3touch-28)  
+[TinkerCAD Case Models](https://www.tinkercad.com/things/j1XckJlfVuT-waveshare-esp32-s3-touch-128-remote-case) For editing the 3D print models.  
   
 [New IRIO board on OSHPark](https://oshpark.com/shared_projects/KRJOFbjO)  I used some double-sided tape to make sure it doesn't touch the other board.  
   
