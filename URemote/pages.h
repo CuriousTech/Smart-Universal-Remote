@@ -272,7 +272,7 @@ $(document).ready(function(){
 
 function openSocket(){
  ws=new WebSocket("ws://"+window.location.host+"/ws")
-// ws=new WebSocket("ws://192.168.31.24/ws")
+// ws=new WebSocket("ws://192.168.31.103/ws")
  ws.onopen=function(evt){}
  ws.onclose=function(evt){alert("Connection closed.");}
  ws.onmessage=function(evt){
@@ -283,12 +283,15 @@ function openSocket(){
   else if(d.cmd=='settings')
   {
     if(d.diskfree>1024*1024)
-      a.free.innerHTML=d.currfs+': '+(d.diskfree/1024/1024).toFixed(1)+' MB Free'
+      a.free.innerHTML=(d.diskfree/1024/1024).toFixed(1)+' MB Free'
     else if(d.diskfree>10240)
-      a.free.innerHTML=d.currfs+': '+(d.diskfree/1024).toFixed()+' KB Free'
+      a.free.innerHTML=(d.diskfree/1024).toFixed()+' KB Free'
     else
-      a.free.innerHTML=d.currfs+': '+d.diskfree+' B Free'
+      a.free.innerHTML=d.diskfree+' B Free'
     if(d.sdavail) a.sdcard.disabled=false
+    sdcard=(d.currfs=='SDCard')
+    a.sdcard.setAttribute('style',sdcard?'color:blue':'')
+    a.int.setAttribute('style',sdcard?'':'color:blue')
   }
   else if(d.cmd=='files')
   {
@@ -366,6 +369,7 @@ function cd(p)
     pathParts=path.split('/')
     pathParts.pop()
     path=pathParts.join('/')
+    if(path=='') path='/'
   }else{
     if(path.length>1) path+='/'
     path+=p
@@ -415,16 +419,15 @@ input{
 </head>
 <body bgcolor="silver">
 <table>
-<tr><td><input type=button value="Internal" onClick="setVar('setfs','int');">
+<tr><td><input id="int" type=button value="Internal" onClick="setVar('setfs','int');">
 <input id=sdcard disabled type=button value="SD Card" onClick="setVar('setfs','SD');">
 </td>
-</tr>
-<tr><td>
-<p align="left" id="free">Internal: 0K Free</p>
-<p align="left" id="path"></p>
+<td id="free">0K Free</td></tr>
+<tr>
+<td id="path" colspan="2">
 </td></tr>
 <tr>
-<td>
+<td colspan="2">
 <div id="dropContainer">
 <table style="font-size:small" id="fileList">
 <tr><td>Drop Files Here</td></tr>
@@ -442,25 +445,27 @@ dropContainer.ondragover = dropContainer.ondragenter = function(ev){ev.preventDe
 dropContainer.ondragend = dropContainer.ondraleave = function(ev){ev.preventDefault()}
 
 dropContainer.ondrop = function(evt) {
-  data=evt.dataTransfer.files[0]
-  evt.preventDefault()
-  item=evt.dataTransfer.items[0].webkitGetAsEntry()
-  it=new Array()
-  it[0]=data.name
-  it[1]=0
-  it[2]=0
-  if(item.isDirectory)
-  {
+  for(i=0;i<evt.dataTransfer.files.length;i++){
+   data=evt.dataTransfer.files[i]
+   evt.preventDefault()
+   item=evt.dataTransfer.items[i].webkitGetAsEntry()
+   it=new Array()
+   it[0]=data.name
+   console.log(data.name)
+   if(item.isDirectory){
+    it[1]=0
     it[2]=1
     setVar('createdir','"'+fullName(data.name)+'"')
     AddFile(it)
-    return
+   }else{
+    it[1]=data.size
+    it[2]=0
+    formData = new FormData()
+    formData.append(data.name,data,fullName(data.name))
+    fetch('/upload', {method: 'POST', body: formData})
+    AddFile(it)
+   }
   }
-  it[1]=data.size
-  formData = new FormData()
-  formData.append(data.name,data,fullName(data.name))
-  fetch('/upload', {method: 'POST', body: formData})
-  AddFile(it)
 }
 </script>
 </html>
