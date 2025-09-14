@@ -1,18 +1,18 @@
 #ifndef MEDIA_H
 #define MEDIA_H
 
-#include <TFT_eSPI.h> // for TFT setup ID
 #include <Arduino.h>
 #include <FS.h>
 #include <FFat.h>
+#include <TFT_eSPI.h> // for TFT setup ID
 
 #define INTERNAL_FS FFat // Should be same as the partition scheme uploaded (SPIFFS, LittleFS, FFat)
 
-#define USE_SDCARD // uncomment to add SD card support
+//#define USE_SDCARD // uncomment to add SD card support
 //#define USE_AUDIO // uncomment for audio (requires SDCard as well) Do not use: Audio.h and IRemote.h conflict
 
-#ifdef USE_SDCARD
- #if (USER_SETUP_ID==303) // 240x320 2.8"
+#if (USER_SETUP_ID==303) // 240x320 2.8"
+ #ifdef USE_SDCARD
   #include <SD_MMC.h>
   #define SD_CLK_PIN  14
   #define SD_CMD_PIN  17
@@ -21,21 +21,27 @@
   #define SD_D2_PIN   -1 
   #define SD_D3_PIN   21 
   #define EXTERNAL_FS SD_MMC
- #elif (USER_SETUP_ID==304) // 240x320 2"
-  #include <SD.h>
-  #include <SPI.h>
-  #define SD_SCK   39
-  #define SD_MISO  40
-  #define SD_MOSI  38 
-  #define SD_CS    41
-  #define EXTERNAL_FS SD
  #endif
+ #include <I2S.h>
+ #define I2S_DOUT    47
+ #define I2S_BCLK    48  
+ #define I2S_LRC     38      // I2S_WS
+
+#elif (USER_SETUP_ID==304) // 240x320 2"
+  #ifdef USE_SDCARD
+   #include <SD.h>
+   #include <SPI.h>
+   #define SD_SCK   39
+   #define SD_MISO  40
+   #define SD_MOSI  38 
+   #define SD_CS    41
+   #define EXTERNAL_FS SD
+  #endif
+#else
+//  static_assert(false, "Wrong TFT_eSPI setup");
 #endif
 
 #ifdef USE_AUDIO
-#define I2S_DOUT    47
-#define I2S_BCLK    48  
-#define I2S_LRC     38      // I2S_WS
 
 #define Volume_MAX  21
 
@@ -57,6 +63,8 @@ struct FileEntry
   bool bDir;
 };
 
+using namespace fs;
+
 class Media
 {
 public:
@@ -73,7 +81,7 @@ public:
   uint32_t freeSpace(void);
   void setDirty(void);
   const char *currFS(void);
-
+  void tone(int freq, int duration);
 #ifdef USE_AUDIO
   void Sound(uint8_t n);
   void setVolume(uint8_t volume);
@@ -87,19 +95,25 @@ public:
   uint8_t m_volume = 100;
 #endif
 
-private:
-#ifdef USE_AUDIO
-  void Audio_Init(void);
-#endif
-  
-  bool m_bCardIn;
-  bool m_bSDActive;
-  bool m_bDirty;
+  bool m_bBusy;
+
 #ifdef USE_SDCARD
   char m_sdPath[maxPathLength * 2];
 #define FILELIST_CNT 32
   FileEntry SDList[FILELIST_CNT];
 #endif
+
+private:
+#ifdef USE_AUDIO
+  void Audio_Init(void);
+#endif
+  uint16_t toneCount;
+  int halfWavelength;
+  const int sampleRate = 8000; // sample rate in Hz
+  int16_t sample;
+  bool m_bCardIn;
+  bool m_bSDActive;
+  bool m_bDirty;
 };
 
 extern Media media;
