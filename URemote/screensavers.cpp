@@ -1,16 +1,58 @@
 #include "screensavers.h"
-#include <TimeLib.h>
+#include <time.h>
 #include "display.h"
 
 extern TFT_eSPI tft;
 extern TFT_eSprite sprite;
+extern tm gLTime;
 
 extern void consolePrint(String s); // for browser debug
+
+const char _dayStr[7][7] PROGMEM = {"Sun","Mon","Tues","Wednes","Thurs","Fri","Satur"};
+const char _monthShortStr[12][4] PROGMEM = {"Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"};
+const char _dayShortStr[7][4] PROGMEM = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
+const char _monthStr[12][10] PROGMEM = {"January","February","March","April","May","June","July","August","September","October","November","December"};
 
 void ScreenSavers::init(uint16_t w, uint16_t h)
 {
   m_nDisplayWidth = w;
   m_nDisplayHeight = h;
+}
+
+const char *ScreenSavers::monthStr(uint8_t m)
+{
+  return _monthStr[m];
+}
+const char *ScreenSavers::monthShortStr(uint8_t m)
+{
+  return _monthShortStr[m];
+}
+const char *ScreenSavers::dayShortStr(uint8_t m)
+{
+  return _dayShortStr[m];
+}
+
+String ScreenSavers::localTimeString()
+{
+  String sTime = String( hourFormat12(gLTime.tm_hour) );
+  if(hourFormat12(gLTime.tm_hour) < 10)
+    sTime = " " + sTime;
+  sTime += ":";
+  if(gLTime.tm_min < 10) sTime += "0";
+  sTime += gLTime.tm_min;
+  sTime += ":";
+  if(gLTime.tm_sec < 10) sTime += "0";
+  sTime += gLTime.tm_sec;
+  sTime += " ";
+  sTime += (gLTime.tm_hour >= 12) ? "PM":"AM";
+  return sTime;
+}
+
+uint8_t ScreenSavers::hourFormat12(uint8_t h)
+{
+  if(h > 12) return h - 12;
+  if(h == 0) h = 12;
+  return h;
 }
 
 void ScreenSavers::select(int n)
@@ -53,8 +95,8 @@ void ScreenSavers::run()
   int16_t ang = constrain( v, 0, 359);
 
   uint16_t color = (display.m_bCharging) ? TFT_BLUE:TFT_GREEN;
-  if(ang <= 90) color = TFT_RED; // 25% left
-  else if(ang <= 180) color = TFT_YELLOW; // 50% left
+  if(display.m_battPercent <= 25) color = TFT_RED; // 25% left
+  else if(display.m_battPercent <= 50) color = TFT_YELLOW; // 50% left
 
   tft.drawArc(m_nDisplayWidth >> 1, m_nDisplayHeight >> 1, 120, 117, 0, ang, color, TFT_BLACK, false);
   if(ang < 359)
@@ -63,7 +105,7 @@ void ScreenSavers::run()
 #else // 240x280
   const uint16_t w = DISPLAY_WIDTH - 40;
 
-  int16_t pos = (display.m_bCharging) ? (display.m_vadc - 1283) * w /  (1639 - 1283) : (display.m_vadc - 1283) * w /  (1550 - 1283);
+  int16_t pos = display.m_battPercent * w / 100;
   pos = constrain( pos, 0, w);
 
   uint16_t color = (display.m_bCharging) ? TFT_BLUE:TFT_GREEN;
