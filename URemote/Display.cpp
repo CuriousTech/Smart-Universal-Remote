@@ -3,7 +3,7 @@ Display and UI code
 */
 
 #include <WiFi.h>
-#include <TimeLib.h>
+#include <time.h>
 #include "eeMem.h"
 #include "CST816T.h"
 #include "Lights.h"
@@ -11,6 +11,7 @@ Display and UI code
 #include "display.h"
 #include <math.h>
 #include "QMI8658.h"
+#include "Media.h"
 
 TFT_eSPI tft = TFT_eSPI();
 TFT_eSprite sprite = TFT_eSprite(&tft);
@@ -20,6 +21,7 @@ extern Lights lights;
 
 // URemote functions
 extern int WsPcClientID;
+extern tm gLTime;
 extern void stopWiFi();
 extern void startWiFi();
 extern void sendIR(uint16_t *pCode);
@@ -144,10 +146,6 @@ void Display::init(void)
   qmi.init(I2C_SDA, I2C_SCL);
   touch.begin();
   attachInterrupt(IMU_INT, std::bind(&Display::handleISR, this), RISING);
-
-  m_vadc = analogRead(BATTV);
-  if(ee.vadcMax < m_vadc)
-    ee.vadcMax = m_vadc; // calibration
 
   qmi.setWakeOnMotion(true); // set WOM (sets acc values)
   m_intTriggered = false;
@@ -358,7 +356,7 @@ void Display::service(void)
     }
   }
 
-  if(ee.bWiFiEnabled && (year() < 2024 || WiFi.status() != WL_CONNECTED)) // Do a connecting effect
+  if(ee.bWiFiEnabled && (gLTime.tm_year < 124 || WiFi.status() != WL_CONNECTED)) // Do a connecting effect
   {
 #if defined(ROUND_DISPLAY) // 240x240
     static int16_t ang;
@@ -743,28 +741,49 @@ void Display::battRead()
   static uint32_t ms;
 
   uint32_t ms2 = millis();
-  if(ms2 - ms < 200) // run every 200ms
+  if(ms2 - ms < 100) // run every 100ms
     return;
-
   ms = ms2;
 
-  static uint16_t v[8];
-  static uint8_t nV = 0;
-  v[nV] = analogRead(BATTV);
+  static uint16_t v[16];
 
-  if(ee.vadcMax < v[nV])
-    ee.vadcMax = v[nV]; // calibration
+  memcpy(v, v+1, sizeof(v) - sizeof(uint16_t));
+  uint16_t vtmp = v[sizeof(v) / sizeof(uint16_t) - 1] = analogRead(BATTV);
 
-  if(m_vadc < v[nV] - 29) // charging usually jumps about 300+/-, 30 on new one
-    m_bCharging = true;
-  else if(m_vadc > v[nV] + 29)
-    m_bCharging = false;
+  if(ee.vadcMax < vtmp - 100)
+    ee.vadcMax = vtmp - 100; // calibration
 
-  if(++nV >= 8) nV= 0;
-  m_vadc = 0;
-  for(uint8_t vi = 0; vi < 8; vi++)  // do a small average
-    m_vadc += v[vi];
-  m_vadc >>= 3;
+  uint16_t vadc;
+
+  for(uint8_t vi = 0; vi < sizeof(v) / sizeof(uint16_t); vi++)  // do a small average
+  {
+    vadc += v[vi];
+  }
+  vadc /= (sizeof(v) / sizeof(uint16_t));
+
+  static uint16_t trend[16];
+  static int8_t readcnt = 16;
+  if(--readcnt <= 0)
+  {
+    readcnt = 8;
+    bool binc = true, bdec = true;
+    memcpy(trend, trend+1, sizeof(trend) - sizeof(uint16_t) );
+    trend[sizeof(trend) / sizeof(uint16_t) - 1] = vadc / 10;
+    for(uint8_t vi = 1; vi < sizeof(trend) / sizeof(uint16_t); vi++)  // trend check
+    {
+      if (trend[vi] > trend[vi - 1])
+         bdec = false;
+      else if (trend[vi] < trend[vi - 1])
+         binc = false;
+    }
+    if(binc) m_bCharging = true;
+    if(bdec) m_bCharging = false;
+  }
+
+  // 1550 = 3.74 = full with normal draw
+  // 1283 = 3.1V
+  m_battPercent = constrain( (vadc - 1283) * 100 / (ee.vadcMax - 1283), 0, 100);
+  m_fVolts = vadc * 4.1 / ee.vadcMax;
 }
 
 bool Display::snooze(uint32_t ms)
@@ -783,7 +802,7 @@ bool Display::snooze(uint32_t ms)
     delay(100);
   }
 
-  if(m_vadc < 1283) // 3.1V
+  if(m_fVolts < 3.2)
   {
     esp_sleep_enable_timer_wakeup(60 * 60 * S_TO_uS);  // 1 hour
     delay(100);
@@ -963,51 +982,28 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed, int16_t x, in
       btnRSSI(pBtn, x, y);
       return;
     case BTF_Time:
-      if(year() < 2024) // don't display invalid time
+      if(gLTime.tm_year < 124) // don't display invalid time
         return;
-      s = String( hourFormat12() );
-      if(hourFormat12() < 10)
-        s = " " + s;
-      s += ":";
-      if(minute() < 10) s += "0";
-      s += minute();
-      s += ":";
-      if(second() < 10) s += "0";
-      s += second();
-      s += " ";
-      s += isPM() ? "PM":"AM";
-      s += " ";
+      s = ss.localTimeString();
       break;
     case BTF_Date:
-      if(year() < 2024) // don't display invalid time
+      if(gLTime.tm_year < 124) // don't display invalid time
         return;
 
-      s = monthShortStr(month());
+      s = ss.monthShortStr(gLTime.tm_mon);
       s += " ";
-      s += String(day());
+      s += gLTime.tm_mday;
       break;
     case BTF_DOW:
-      if(year() < 2024) // don't display invalid time
-        return;
-      s = dayShortStr(weekday());
+      if(gLTime.tm_year > 124) // don't display invalid time
+        s = ss.dayShortStr(gLTime.tm_wday);
       break;
     case BTF_Volts:
-      {
-#if (USER_SETUP_ID == 302 || USER_SETUP_ID == 303)
-        float fV = 3.3 / 4096 * 3 * m_vadc;
-#else
-        float fV = 3.3 / 4096 * 3.22 * m_vadc; // fudged for 1.69"
-#endif
-        s =String(fV, 2)+"V";
-      }
+      pBtn->textColor = (m_bCharging) ? TFT_RED:TFT_WHITE;
+      s =String(m_fVolts, 2)+"V";
       break;
     case BTF_BattPerc:
-      // 1550 = 3.74 = full with normal draw  (0.5V drop on 1200mAh!)
-      // 1283 = 3.1V
-      {
-        uint8_t perc = constrain( (m_vadc - 1283) * 100 / (1550 - 1283), 0, 100);
-        s = String(perc)+'%';
-      }
+      s = String(m_battPercent)+'%';
       break;
     case BTF_Temp:
       s = String(qmi.readTemp(), 1)+"F";
@@ -1158,6 +1154,8 @@ void Display::drawButton(Tile& pTile, Button *pBtn, bool bPressed, int16_t x, in
 void Display::buttonCmd(Button *pBtn, bool bRepeat)
 {
   uint16_t code[4];
+
+  media.tone(2000, 50);
 
   switch(pBtn->nFunction)
   {
@@ -1461,39 +1459,46 @@ void Display::btnRSSI(Button *pBtn, int16_t x, int16_t y)
   }
 }
 
+#define percent(n,p) (n*p/100)
+
 // Analog clock
 void Display::drawClock(int16_t x, int16_t y)
 {
   const float fx = DISPLAY_WIDTH/2 + x; // center
   const float fy = DISPLAY_HEIGHT/2 + y;
 
-  if(ee.bWiFiEnabled && (year() < 2024 || WiFi.status() != WL_CONNECTED)); // Still connecting
-  else sprite.drawSmoothCircle(fx, fy, fx-1, m_bCharging ? TFT_BLUE : TFT_WHITE, bgColor); // draw outer ring
+  int rad = min(DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2);
+
+  if(ee.bWiFiEnabled && (gLTime.tm_year < 124 || WiFi.status() != WL_CONNECTED)); // Still connecting
+  else sprite.drawSmoothCircle(fx, fy, rad-1, m_bCharging ? TFT_BLUE : TFT_WHITE, bgColor); // draw outer ring
+
+  rad = percent(rad, 97); // 97%
 
   for(int16_t i = 0; i < 360; i += 6) // drawing the watchface instead of an image saves 9% of PROGMEM
   {
     int16_t xH,yH,xH2,yH2;
-    cspoint(xH, yH, fx, fy, i, 116); // outer edge
-    cspoint(xH2, yH2, fx, fy, i, (i%30) ? 105:96); // 60 ticks/12 longer ticks
+    cspoint(xH, yH, fx, fy, i, rad); // outer edge
+    cspoint(xH2, yH2, fx, fy, i, percent(rad, ( (i%30)?91:83) ) ); // 60 ticks/12 longer ticks
     sprite.drawWideLine(xH, yH, xH2, yH2, (i%30) ? 2:3, TFT_SILVER, bgColor); // 12 wider ticks
   }
 
-  if(year() < 2024)
+  if(gLTime.tm_year < 124) // invalid time
     return;
 
   int16_t xH,yH, xM,yM, xS,yS, xS2,yS2;
 
-  float a = (hour() + (minute() * 0.00833) ) * 30;
-  cspoint(xH, yH, fx, fy, a, 64);
-  cspoint(xM, yM, fx, fy, minute() * 6, 87);
-  cspoint(xS, yS, fx, fy, second() * 6, 96);
-  cspoint(xS2, yS2, fx, fy, (second()+30) * 6, 24);
+  float a = (gLTime.tm_hour + (gLTime.tm_min * 0.00833) ) * 30;
+  cspoint(xH, yH, fx, fy, a, percent(rad, 56) );
+  cspoint(xM, yM, fx, fy, gLTime.tm_min * 6, percent(rad, 75) );
+  cspoint(xS, yS, fx, fy, gLTime.tm_sec * 6, percent(rad, 83) );
+  cspoint(xS2, yS2, fx, fy, (gLTime.tm_sec+30) * 6, percent(rad, 21) );
 
   sprite.drawWedgeLine(fx, fy, xH, yH, 8, 2, TFT_LIGHTGREY, bgColor); // hour hand
   sprite.drawWedgeLine(fx, fy, xM, yM, 5, 2, TFT_LIGHTGREY, bgColor); // minute hand
   sprite.fillCircle(fx, fy, 8, TFT_LIGHTGREY ); // center cap
   sprite.drawWideLine(xS2, yS2, xS, yS, 2.5, TFT_RED, bgColor ); // second hand
 }
+
 
 // calc point for a clock hand and slider
 void Display::cspoint(int16_t &x2, int16_t &y2, int16_t x, int16_t y, float angle, float size)
@@ -1541,7 +1546,6 @@ void Display::drawText(String s, int16_t x, int16_t y, int16_t angle, uint16_t c
   textSprite.drawString(s, 0, 0);
   sprite.setPivot(x, y);
   textSprite.pushRotated(&sprite, angle);
-//  sprite.setPivot(0, 0);
 }
 
 void Display::drawArcText(String s, int16_t x, int16_t y, const GFXfont *pFont, uint16_t color, float angle, int8_t distance)
