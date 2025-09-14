@@ -283,11 +283,11 @@ function openSocket(){
   else if(d.cmd=='settings')
   {
     if(d.diskfree>1024*1024)
-      a.free.innerHTML=(d.diskfree/1024/1024).toFixed(1)+' MB Free'
+      a.free.innerHTML=(d.diskfree/1024/1024).toFixed(1)+' GB Free'
     else if(d.diskfree>10240)
-      a.free.innerHTML=(d.diskfree/1024).toFixed()+' KB Free'
+      a.free.innerHTML=(d.diskfree/1024).toFixed()+' MB Free'
     else
-      a.free.innerHTML=d.diskfree+' B Free'
+      a.free.innerHTML=d.diskfree+' KB Free'
     if(d.sdavail) a.sdcard.disabled=false
     sdcard=(d.currfs=='SDCard')
     a.sdcard.setAttribute('style',sdcard?'color:blue':'')
