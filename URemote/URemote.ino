@@ -22,7 +22,7 @@ SOFTWARE.
 */
 
 // Build with Arduino IDE 1.8.57.0
-//  ESP32: (2.0.14) ESP32S3 Dev Module, QIO, CPU Freq: 80MHz for lowest power (<60mA),
+//  ESP32: ( <=2.0.14 or 3.2.0+ ) ESP32S3 Dev Module, QIO, CPU Freq: 80MHz for lowest power (<60mA),
 //  Flash: 16MB
 //  Partition: 16MB (3MB APP/9.9 FATFS)
 // For 1.28" round
@@ -45,11 +45,9 @@ SOFTWARE.
 #define IR_ENABLE // uncomment for IR
 
 #include <WiFi.h>
-#include <TimeLib.h> // https://github.com/PaulStoffregen/Time
-#include <UdpTime.h> // https://github.com/CuriousTech/ESP07_WiFiGarageDoor/tree/master/libraries/UdpTime
-
 #include "Media.h"
 #include "eeMem.h"
+#include <time.h>
 #include <ESPmDNS.h>
 #ifdef OTA_ENABLE
 #include <ArduinoOTA.h>
@@ -61,6 +59,11 @@ SOFTWARE.
 #include "jsonString.h"
 #include "pages.h"
 
+#define TZ  "EST5EDT,M3.2.0,M11.1.0"  // https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv
+
+const char *hostName = "URemote"; // Device and OTA name
+
+tm gLTime;
 Media media;
 
 AsyncWebServer server( 80 );
@@ -77,14 +80,12 @@ BleKeyboard bleKeyboard;
 #endif
 
 #ifdef CLIENT_ENABLE
-#include "WebSocketClient.h"  //https://github.com/krohling/ArduinoWebsocketClient
+#include "WebSocketClient.h"
 WebSocketClient WsClient;
 bool bWscConnected;
 void WscSend(String s);
 void startListener(void);
 #endif
-
-// GPIO 15-18 reserved for keypad
 
 #ifdef IR_ENABLE
 #if (USER_SETUP_ID==302) // 240x240
@@ -118,18 +119,14 @@ void startListener(void);
 #include "display.h"
 #include "Lights.h" // Uses ~3KB
 Lights lights;
-const char *hostName = "URemote"; // Device and OTA name
 
 bool bConfigDone = false; // EspTouch done or creds set
 bool bStarted = false; // first start
 bool bRestarted = false; // consecutive restarts
-
-uint32_t connectTimer;
 bool bRXActive;
 
 Display display;
 eeMem ee;
-UdpTime udpTime;
 
 void WsSend(String s)
 {
@@ -207,7 +204,6 @@ void stopWiFi()
 
   WiFi.setSleep(true);
   bRestarted = false;
-  Serial.println("wifi stopped");
 }
 
 const char *szWiFiStat[] = {
@@ -228,7 +224,8 @@ bool secondsWiFi() // called once per second
     if( WiFi.smartConfigDone())
     {
       bConfigDone = true;
-      connectTimer = now();
+      WiFi.SSID().toCharArray(ee.szSSID, sizeof(ee.szSSID)); // Get the SSID from SmartConfig or last used
+      WiFi.psk().toCharArray(ee.szSSIDPassword, sizeof(ee.szSSIDPassword) );
     }
   }
   if(bConfigDone)
@@ -240,8 +237,9 @@ bool secondsWiFi() // called once per second
         MDNS.begin( hostName );
         bStarted = true;
         MDNS.addService("iot", "tcp", 80);
-        WiFi.SSID().toCharArray(ee.szSSID, sizeof(ee.szSSID)); // Get the SSID from SmartConfig or last used
-        WiFi.psk().toCharArray(ee.szSSIDPassword, sizeof(ee.szSSIDPassword) );
+        configTime(0, 0, "pool.ntp.org");
+        setenv("TZ", TZ, 1);
+        tzset();
         lights.init();
         bConn = true;
 #ifdef CLIENT_ENABLE
@@ -254,18 +252,14 @@ bool secondsWiFi() // called once per second
 // todo: reconnect to host
       }
     }
-    else if(now() - connectTimer > 10) // failed to connect for some reason
+    else if(WiFi.status() == WL_CONNECT_FAILED) // failed to connect for some reason
     {
-      connectTimer = now();
       WiFi.mode(WIFI_AP_STA);
       WiFi.beginSmartConfig();
       bConfigDone = false;
       bStarted = false;
     }
   }
-
-  if(WiFi.status() != WL_CONNECTED)
-    return bConn;
 
   return bConn;
 }
@@ -453,7 +447,6 @@ void jsonCallback(int16_t iName, int iValue, char *psValue)
 
 void startWiFi()
 {
-  Serial.println("startWiFi\r\n");
   if(WiFi.status() == WL_CONNECTED)
     return;
 
@@ -461,7 +454,6 @@ void startWiFi()
 
   WiFi.hostname(hostName);
   WiFi.mode(WIFI_STA);
-  Serial.println("startWiFi2\r\n");
 
   if ( ee.szSSID[0] )
   {
@@ -475,7 +467,6 @@ void startWiFi()
     WiFi.beginSmartConfig();
     display.notify("Use EspTouch");
   }
-  connectTimer = now();
 
 #ifdef OTA_ENABLE
   ArduinoOTA.setHostname(hostName);
@@ -563,7 +554,7 @@ void serviceWiFi()
 String dataJson()
 {
   jsonString js("state");
-  js.Var("t", (long)now() - ( (ee.tz + udpTime.getDST() ) * 3600) );
+  js.Var("t", (long)time(nullptr) );
   return js.Close();
 }
 
@@ -579,12 +570,12 @@ void sendState()
 String setupJson()
 {
   jsonString js("settings");
-  js.Var("tz", ee.tz);
   js.Var("st", ee.sleepTime);
   js.Var("ss", ee.ssTime);
   js.Var("diskfree",  media.freeSpace() );
   js.Var("sdavail",  media.SDCardAvailable() );
   js.Var("currfs", media.currFS());
+  js.Var("vmax", ee.vadcMax);
   return js.Close();
 }
 
@@ -631,9 +622,9 @@ void setup()
 //  ets_printf("\nStarting\n"); // print over USB (if using UART pins for IR, don't print after it starts)
 //  ets_printf("Free: %ld\n", heap_caps_get_free_size(MALLOC_CAP_8BIT) );
 
+  media.init();
   ee.init();
   display.init();
-  media.init();
 
   if(ee.bWiFiEnabled)
     startWiFi();
@@ -662,11 +653,6 @@ void loop()
 
   display.service();  // check for touch, etc.
   media.service();
-
-  if(WiFi.status() == WL_CONNECTED)
-    if(udpTime.check(ee.tz))
-    {
-    }
 
   serviceWiFi(); // handles OTA
 
@@ -704,33 +690,29 @@ void loop()
   }
 #endif
 
-  if(sec_save != second()) // only do stuff once per second
+  static uint32_t lastMS;
+  if(millis() - lastMS >= 1000) // only do stuff once per second
   {
-    sec_save = second();
+    lastMS = millis();
+    getLocalTime(&gLTime);
 
-/*
-   if(sec_save == 0)
-   {
-     IrReceiver.begin(IR_RECEIVE_PIN);
-     bRXActive = true;
-     ets_printf("RX active\r\n");
-   }
-*/
-    if(secondsWiFi()) // once per second stuff, returns true once on connect
-      udpTime.start();
+    secondsWiFi(); // once per second stuff, returns true once on connect
 
     display.oneSec();
 
-    if(min_save != minute()) // only do stuff once per minute
+    if(min_save != gLTime.tm_min) // only do stuff once per minute
     {
-      min_save = minute();
+      min_save = gLTime.tm_min;
 
-      if(hour_save != hour()) // update our IP and time daily (at 2AM for DST)
+      if(hour_save != gLTime.tm_hour) // update our IP and time daily (at 2AM for DST)
       {
-        hour_save = hour();
+        hour_save = gLTime.tm_hour;
         if(hour_save == 2 && WiFi.status() == WL_CONNECTED)
-          udpTime.start(); // update time daily at DST change
-
+        {
+          configTime(0, 0, "pool.ntp.org");
+          setenv("TZ", TZ, 1);
+          tzset();
+        }
         ee.update();
       }
     }
