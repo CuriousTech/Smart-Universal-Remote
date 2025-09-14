@@ -231,7 +231,7 @@ Tile layout
 #if defined(ROUND_DISPLAY)
         { 0, BF_FIXED_POS, BTF_RSSI, "", NULL, 0, {0}, {DISPLAY_WIDTH/2 - 26/2, DISPLAY_HEIGHT - 35, 26, 26}},
 #else
-        { 0, BF_FIXED_POS, BTF_RSSI, "", NULL, 0, {0}, {4, DISPLAY_HEIGHT - 35, 26, 26}}, // bottom left corner
+        { 0, BF_FIXED_POS, BTF_RSSI, "", NULL, 0, {0}, {4, DISPLAY_HEIGHT - 10, 26, 26}}, // bottom left corner
 #endif
         {0xFF}
       }
@@ -426,11 +426,12 @@ Tile layout
   uint8_t  m_nNextTile;
   uint8_t  m_nCurrRow;
   uint8_t  m_nLastRow;
-
 #define NOTE_CNT 10
   const char *m_pszNotifs[NOTE_CNT + 1];
 
 public:
+  uint8_t  m_battPercent;
+  float    m_fVolts;
   uint8_t m_brightness = 200; // initial brightness
   bool    m_bSleeping;
   bool    m_bCharging;
@@ -442,7 +443,6 @@ public:
   uint16_t m_outTemp;
   bool     m_bGdoDoor;
   bool     m_bGdoCar;
-  uint16_t m_vadc;
 };
 
 extern Display display;
