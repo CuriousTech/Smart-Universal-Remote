@@ -14,6 +14,20 @@ Media::Media()
 
 void Media::service()
 {
+#if (USER_SETUP_ID==303) // 240x320 2.8"
+  if(toneCount)
+  {
+    if (toneCount % halfWavelength == 0 )
+    {
+      // invert the sample every half wavelength count multiple to generate square wave
+      sample = -1 * sample;
+    }
+    I2S.write(sample); // Right channel
+    I2S.write(sample); // Left channel
+    toneCount--;
+  }
+#endif
+
 #ifdef USE_AUDIO
   audio.loop();
 #endif
@@ -34,6 +48,12 @@ void Media::service()
     {
       memset(SDList, 0, sizeof(SDList));
       file = Path.openNextFile();
+      m_bBusy = true;
+    }
+    else if(strlen(m_sdPath) > 1 )
+    {
+      setPath("/"); // fail to root
+      m_bDirty = true;
     }
     fileCount = 0;
   }
@@ -50,6 +70,7 @@ void Media::service()
     {
       file.close();
       Path.close();
+      m_bBusy = false;
 
       jsonString js("files");
       js.Array("list", SDList, m_sdPath[1] ? true:false );
@@ -61,12 +82,20 @@ void Media::service()
 
 void Media::init()
 {
+#if (USER_SETUP_ID==303) // 240x320 2.8"
+  i2s_mode_t mode = I2S_PHILIPS_MODE; // I2S decoder is needed
+  const int bps = 16;
+
+  I2S.begin(mode, sampleRate, bps);
+  I2S.setSckPin(I2S_BCLK);
+  I2S.setDataPin(I2S_DOUT);
+  I2S.setFsPin(I2S_LRC);
+
+#endif
 
 #ifdef USE_AUDIO
   Audio_Init();
 #endif
-  
-  INTERNAL_FS.begin(true);
 
 #ifdef USE_SDCARD
  #if (USER_SETUP_ID==303) // 240x320 2.8"
@@ -87,9 +116,13 @@ void Media::init()
     return;
 
   m_bCardIn = true;
-  strcpy(m_sdPath, "/"); // start with root
+  setFS("SD");
+  setPath("/"); // start with root
   setDirty();
 #endif
+
+  INTERNAL_FS.begin(true); // Start FFat after SD card to fix disk space issue
+
 }
 
 bool Media::SDCardAvailable()
@@ -116,7 +149,7 @@ void Media::setFS(char *pszValue)
 
 uint32_t Media::freeSpace()
 {
-  uint32_t nFree;
+  uint64_t nFree;
 
   if(m_bSDActive)
   {
@@ -129,7 +162,7 @@ uint32_t Media::freeSpace()
   {
     nFree = INTERNAL_FS.totalBytes() - INTERNAL_FS.usedBytes();
   }
-  return nFree;
+  return (uint32_t)(nFree >> 10);
 }
 
 void Media::setPath(char *szPath)
@@ -231,6 +264,19 @@ void Media::setDirty()
 {
   if(m_bCardIn)
     m_bDirty = true;
+}
+
+void Media::tone(int freq, int duration)
+{
+#ifdef USE_AUDIO
+  if(audio.isRunning())
+    return;
+#endif
+
+#if (USER_SETUP_ID==303) // 240x320 2.8"
+  halfWavelength = (sampleRate / freq); // half wavelength of square wave
+  toneCount = duration;
+#endif
 }
 
 #ifdef USE_AUDIO
