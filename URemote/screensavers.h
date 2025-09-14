@@ -57,6 +57,11 @@ public:
   void select(int n);
   void run(void);
   uint8_t m_saver;
+  uint8_t hourFormat12(uint8_t h);
+  const char *monthShortStr(uint8_t m);
+  const char *monthStr(uint8_t m);
+  const char *dayShortStr(uint8_t m);
+  String localTimeString();
 
 private:
   void Lines(bool bInit);
